@@ -4,6 +4,8 @@
 基线：`main` @ `07c6353`（2026-09-30）
 范围：`packages/core-agent`、`packages/stage-ui`、`packages/plugin-protocol`、`packages/server-runtime`、`packages/provider-inference`、`integrations/*`、`plugins/*`、`server/apps/api`
 
+修订：第二轮加入 §13（架构张力复核），并按其结论修订了 §7.1、§8.1、§8.2。
+
 本文用 `path:line` 引用代码。“已验证”表示跑过临时测试（见附录 A），“静态推断”表示只读了代码、没有执行。
 
 ---
@@ -421,14 +423,14 @@ interface WorkingMemoryEntry extends ContextMessage {
   writer: string // agentContextId 或 module id
   salience: number // 0..1，JEV 插槽
   expiresAt: number // TTL
-  version: number // 同 slot 的乐观并发，仿 baseRevision
+  version?: number // 可选。见 §13.10，初期不需要
   sourceRef?: { refType: string, targetId: string } // 指回原始来源
 }
 ```
 
 - **容量**：总预算 `B_wm` 按 token 计（建议 300–800），每个 writer 有配额，单条 ≤ 80 token。超出时**写入被拒**，写入方必须改写成一个 reference。
 - **准入与淘汰**：`keep = salience × freshness(age, ttl)`。写入时如果放不下，就淘汰 keep 最低的条目。低于新条目的 keep 才淘汰，否则拒绝新条目。
-- **并发**：按 `contextId` 分槽，默认 replace-self，单写者覆盖。多写者用 `version` 做 CAS，冲突时后到的写入以“追加一个带 writer 的变体”落地，由调度器下个 tick 合并。`append-self` 只允许固定几个事件型槽位，并设条数上限。
+- **并发**：按 `contextId` 分槽，默认 replace-self，同一槽位后写覆盖（LWW）。registry 只在 leader 里同步执行，本来就是串行的，所以初期不需要 CAS（§13.10 修订）。`append-self` 只允许固定几个事件型槽位，并设条数上限。
 - **读取投影**：读者只看到 `destinations` 包含自己（或 `all`）、`lane` 匹配的条目。这就修掉了 B2。
 - **整理**：调度器每个 tick 做确定性清理（过期、超额、孤儿 writer）。LLM 合并只在超过预算的次数达到阈值时触发。
 
@@ -459,13 +461,13 @@ interface WorkingMemoryEntry extends ContextMessage {
 ```ts
 interface Workload {
   id: string
-  kind: string // 'chat' | 'game:react' | 'game:plan' | 'discord:reply' | 'stream:commentary' | ...
+  kind: string // 由生产者声明的不透明字符串，调度器不解析含义（§13.1 修订）
   origin: { event: string, eventId: string, source: string } // 指回 spark:notify 或 input 等
   bindings: string[]
   salience: number // 0..1，见 8.2
   deadlineAt?: number // 例如 spark:notify.ttlMs 换算
   coalesceKey?: string // 同 key 合并，仿 Brain.coalesceQueue
-  requirements: ModelRequirements
+  requirements: ModelRequirements // 由生产者或模块 manifest 声明，调度器不推断
 }
 ```
 
@@ -477,7 +479,7 @@ JEV 在仓库里不存在，这里只定义接口：
 type SalienceFn = (w: Workload, world: SchedulerSnapshot) => number // 0..1
 ```
 
-- 在拿到 JEV 定义之前，先用**现有词汇的统一映射**作为基线：`critical/immediate → 0.9`、`high/soon → 0.7`、`normal → 0.5`、`low/later → 0.3`。用户直接对话固定在 ≥ 0.8，artistry 的 `intensity/100` 直接用。
+- 在拿到 JEV 定义之前，先用**现有词汇的统一映射**作为基线：`critical/immediate → 0.9`、`high/soon → 0.7`、`normal → 0.5`、`low/later → 0.3`。这些值来自**生产者自己填的** urgency 或 priority 字段（Minecraft Brain 的 LLM 已经在自己决定 `notifyAiri` 的 urgency），调度器只做数值映射。“用户直接对话 ≥ 0.8”这类跨来源的偏好属于用户配置，不是调度器内置的领域知识（§13.1 修订）。
 - JEV 接入后，作为 `SalienceFn` 的一项，与基线加权。
 
 salience 驱动的决策：
@@ -629,10 +631,10 @@ interface MemoryRecord {
 
 | 阶段 | 内容 | 顺手解决 | 触及范围 |
 | --- | --- | --- | --- |
-| **P0 纠偏** | registry 按 `destinations/lane` 投影，加 TTL 和总预算。外部绑定来源自动创建 meta（Discord 的 sessionId 变成 bindings）。`forkSession` 记录 `parentSessionId`。spark ticker 收归 synced leader | B2、B5、B6、B10 | core-agent registry、session-store、character-orchestrator |
+| **P0 纠偏** | registry 按 `destinations/lane` 投影，加 TTL 和总预算。外部绑定来源自动创建 meta（Discord 的 sessionId 变成 bindings）。`forkSession` 记录 `parentSessionId`。spark ticker 收归 synced leader。`context-providers/minecraft.ts` 的领域文案移回 Minecraft 模块（§13.1） | B2、B5、B6、B10 | core-agent registry、session-store、character-orchestrator |
 | **P1 AgentContext** | 扩展 `ChatSessionMeta`（kind、personaId、bindings、status、digest）。按绑定键 resume。run 表 + 贯通 `runId` | B11、§6.1 | stage-ui 类型、session-store、orchestrator |
 | **P2 多 lane runtime** | 每个 context 一个队列 + 全局信号量。foreground 只服务可见 context。从 `Brain` 抽出 `RunSupervisor` 放进 core-agent | B1、§6.3 | core-agent runtime，chat facade 适配 |
-| **P3 调度器** | character-orchestrator 升级为 Scheduler：统一 workload 入口、salience 基线映射、coalesce、租约。spark-notify agent 作为 triage | B7（第一批：spark 与 chat 合流） | core-agent 新模块 + stage-ui 适配 |
+| **P3 调度器** | character-orchestrator 升级为 Scheduler：统一 workload 入口、salience 基线映射、coalesce、租约。spark-notify agent 作为 triage。`module:announce` 增加可选的 `cognition` 块作为目录。chat 的 `spark_command` 工具收进准入层（§13.1、§13.7） | B7（第一批：spark 与 chat 合流） | core-agent 新模块 + stage-ui 适配 |
 | **P4 模型路由** | ModelProfile 聚合 + requirements + `resolveStep` 接入。consciousness 降级为默认档 | B3 | provider-inference、stage-ui |
 | **P5 Prompt 配方** | 把 `streamWithStageAdapters` 里的组装逻辑下沉成 recipe 组装器。启用 `history-block` 压缩并导出 compaction。identity 不再快照进 session | B4、B8、B9 | core-agent messages、chat facade |
 | **P6 主 memory** | Memory Service（模块形态）+ provenance + 可见性标签 + 回写管线 | §7 | 新包 + memory-pgvector |
@@ -655,6 +657,259 @@ P0–P2 不改变任何产品行为，但做完以后，“动态 Agent”就只
 8. **外部 Agent 的接入深度**。Minecraft Brain、satori、telegram 是保持自治，只通过 `spark:*` 协作；还是把它们的 LLM 调用也交给中央调度器（统一模型路由和预算）？前者改动小，后者一致性强。
 9. **Discord 会话的粒度**。按 guild、按频道，还是按 thread？B5 修复时就要确定，因为它就是 bindings 的形状。
 10. **本文档的去向**。仓库规则要求文档用 simple English。如果要提交到上游 `moeru-ai/airi`，需要改写成英文，并拆成 ADR。
+
+---
+
+## 13. 架构张力复核（A–G）
+
+这一节逐条检验讨论中提出的 7 个 design tension。每条先给代码事实，再给判断。有几条会推翻本文前面的写法，已经在正文对应位置标了“§13 修订”。
+
+### 13.1 A：scheduler 会不会变成新的单体
+
+**代码事实：领域知识目前一半在模块里，一半漏进了 stage 核心。**
+
+模块自己持有的部分，比预想的多：
+
+- **Minecraft 自己决定什么值得上报、有多紧急。** `Brain` 把 `notifyAiri(headline, note, urgency)` 和 `updateAiriContext(text, hints, lane)` 作为工具交给它自己的 LLM（`integrations/minecraft/src/cognitive/conscious/brain.ts:765-768`）。状态发布器用固定的 `contextId + lane + hints` 做 replace-self（`integrations/minecraft/src/airi/minecraft-context-service.ts:171-197`）。也就是说，“这件事重不重要”是 Minecraft 的认知在判断，不是 stage 在判断。
+- **Discord adapter 自己决定会话粒度和上下文**，包括 guild 或 DM 的 sessionId、`messagePrefix`、`contextUpdates`（`integrations/discord-bot/src/adapters/airi-adapter.ts:249-276`）。
+- **extension 自己拥有 toolset prompt**：`SerializedToolsetPromptDefinition.ownerExtensionId`。tool 的 relevance 线索也由 extension 声明：`activation.keywords/patterns`（`packages/plugin-sdk-tamagotchi/src/tools/registry.ts`）。
+
+漏进 stage 核心的部分：
+
+- `packages/stage-ui/src/stores/chat/context-providers/minecraft.ts` 在 chat store 里硬编码了一整段 Minecraft 语义说明，而且**每次发送都注入**。
+- `gaming-minecraft` store 自己处理 `spark:command` 和 registry 健康事件。
+- `VISION_WORKLOADS` 表写在 stage-ui 里。
+- `useModulesList` 是手写的模块清单。
+
+所以风险是真的，而且**已经在小规模发生**：现在没有 scheduler，领域知识就漏进了 chat facade。以后有了 scheduler，它会自然成为下一个漏斗。
+
+**第二个事实：调度方没有“目录”。** spark-notify 的 `builtIn_sparkCommand` 要求 LLM 填 `destinations: string[]`（“List of sub-agent IDs”，`packages/core-agent/src/agents/spark-notify/schema.ts:90`），但 prompt 里只告诉它触发事件的来源模块名（`agent.ts` 的 `getSparkNotifyHandlingAgentInstruction`），没有可用 destination 的清单。LLM 只能猜。缺目录的系统，最后都会靠在中心写死名字来补洞。
+
+**已有的声明机制，以及它们缺什么：**
+
+| 机制 | 已经声明了 | 缺的认知路由信息 |
+| --- | --- | --- |
+| `module:announce` | `possibleEvents`、`permissions`、`configSchema`、`dependencies` | 发布哪些 lane，接受哪些 destination 或 intent |
+| kit descriptor | `capabilities: [{ key, actions }]`（权限用，例如 `kit.gamelet.runtime`） | 与认知无关 |
+| tool descriptor | `activation.keywords/patterns`、toolset prompt | 已经够用 |
+| `registry:modules:sync` | 在线模块列表 + identity | 能力摘要 |
+| 事件信封 | urgency、priority、interrupt、ttl、lane、destinations、contextId、hints | 已经够用 |
+
+**判断**：
+
+scheduler 可以理解名字和数字，不理解含义。它能读的字段全在信封和 manifest 上：workload `kind`（不透明字符串）、`lane`、`bindings`、salience、deadline、requirements、`parentRunId`、资源占用。领域含义放在三个地方：
+
+1. **生产者**：模块决定 urgency、lane、destinations。Minecraft 已经这么做了。
+2. **模块 manifest 里的认知块**：在 `module:announce` 上加一个可选的 `cognition` 字段，声明 lanes、可接收的 intent、它产出的 workload kind 及默认 requirements，以及一段“如何理解我的 context”的 prompt 片段。这和 toolset prompt 由 extension 拥有是同一个模式，不是新机制。
+3. **执行 context 的 prompt recipe**：领域 prompt 片段由模块提供，scheduler 只负责按 `kind` 把片段接上。
+
+需要 LLM 做 triage 时，triage prompt 由各模块 manifest 的描述**拼接**而成，scheduler 代码里不写任何领域句子。
+
+**一条可检查的适应度规则**：新增一个模块（例如直播）时，scheduler 的代码改动必须为零，只允许改模块自己和用户配置。`context-providers/minecraft.ts` 就是违反这条规则的现存反例，它应该在 P0 时移回 Minecraft 模块，以 manifest 的 prompt 片段或 replace-self 状态的形式提供。
+
+**对前文的修订**：§8.1 和 §8.2 原来的写法里有 `'game:react'` 这类 kind 示例，还有“用户对话 ≥ 0.8”这种内置偏好，暗示 scheduler 懂领域，已经改掉。跨来源的偏好（例如“主人私聊优先于 Discord 群”）是**用户配置**，不是 scheduler 的知识。
+
+### 13.2 B：三层状态的认知语义
+
+**代码里已经隐含了分层，而且作者已经写出过其中一条语义边界。**
+
+- `createUserAccountContext` 的 prompt 原文：“A requested nickname in chat applies to this conversation. Do not claim that it updates the account or persistent memory.”（`packages/stage-ui/src/stores/chat/context-providers/user-account.ts`）。它明确区分了“会话内成立的说法”和“权威记录”，而且把“persistent memory”当成第三种东西。它的注释还写了 “The caller must not persist this snapshot.”，说明这个快照属于 request 作用域。
+- Minecraft context 的 prompt 写着 “AIRI should still rely on live bot context before assuming the bot can act”（`context-providers/minecraft.ts`）。这是在 prompt 里手工表达新鲜度。
+- session 的云合并按指纹取并集，只追加不改写（`packages/core-agent/src/session/merge-loaded-session-messages.ts`）。它把会话当成**事件日志**，不当成可变状态。
+- registry 的 replace-self 是“最新观察覆盖旧观察”，没有持久化，`cleanup` 时整体清空。
+
+**当前的 source of truth**：会话历史以 leader 的 IndexedDB 为准，云端按 seq 合并进来。registry 没有 source of truth，只是内存。模块状态由模块自己负责。主 memory 不存在。
+
+三层之间**没有任何一致性机制**。实际的“冲突解决”靠的是 prompt 位置：`runtime-context` 挂在最后一条 user turn 上，所以离生成最近，LLM 天然更相信它。这是一个偶然结果，不是设计出来的。
+
+**判断：三层不是同一事实的三级缓存，而是三种认识论类型。**
+
+| 层 | 本质 | 对什么有权威 | 不对什么有权威 |
+| --- | --- | --- | --- |
+| 主 memory | **信念**：经过整合、带出处、可修订的长期判断，加上调度史 | 持久的偏好、关系、承诺，“哪条 context 做过什么” | 世界此刻的状态 |
+| Agent context | **情节**：一条认知线看到和说过的东西 | “在这条线里发生过什么” | 现在是否仍然成立 |
+| shared context | **注意力面**：此刻值得共同注意的少量观察和指针 | 无。它只表达“这件事现在值得看” | 任何事实 |
+| 模块状态 | **世界**：唯一描述当前状态的来源 | 现在是什么样 | 历史意义 |
+
+照这个语义，“主 memory 说 A、Agent context 说 B、shared context 说 C”**不是冲突**。它说的是：“我们一直相信 A；在这条对话里曾经出现过 B；此刻有人提醒大家注意 C”。三句话可以同时为真。要回答的问题，决定该读哪一层：
+
+- 问**此刻的世界**：模块 > 新鲜的 shared 条目（它只是指路，最终要回源）> memory > context。
+- 问**用户在这里说过什么**：context 是唯一权威。
+- 问**长期应该相信什么**：memory。新情节和旧信念不一致时，整合环节写一条**新的**带出处的信念，不覆盖旧的，也不去改写情节。
+
+**需要的显式语义只有三样**，而且大部分已经存在：
+
+1. **authority**：由所在层决定。进 prompt 时映射到 `SystemTurn.authority`，外部事实一律用 `context`。
+2. **freshness**：`observedAt` 或 `createdAt`。`ContextMessage.createdAt` 已经有。
+3. **scope**：`personaId`、`bindings`、`destinations`。前两个在 §4.3 里，第三个协议里已经有。
+
+不需要通用的 merge 算法。
+
+**哪些可以从 Agent context 回写主 memory**：用户陈述的稳定事实和偏好、关系事件、做出的承诺、有持久后果的任务结果，以及 context 的 digest（写入调度史）。
+
+**哪些不应该升级为全局知识**：
+
+- 会话内约定。昵称就是现成的例子，代码已经禁止它“更新 persistent memory”。
+- 中间推理。
+- 模块某一时刻的状态快照。
+- 角色扮演中的设定性内容，除非明确打了标签。
+- **低信任来源对高信任主体的断言**，例如 Discord 陌生人关于主人的说法。按现在的 `messagePrefix` 设计，这些说法会以 user 身份进入会话，最危险的误升级路径就在这里。
+
+**shared context 是 attention surface，不是权威状态。** 正因为它不是权威，它才可以很小、可以丢、可以不持久化，也不需要强一致。如果把它当成权威，就必须给它持久化、版本和冲突处理，它就会长成第二个数据库。这就是你们担心的膨胀路径。
+
+### 13.3 C：Agent identity 与 execution instance 要不要拆
+
+**代码里已经拆开了，只是没有叫“Agent”。**
+
+| 代码概念 | 实际承担的身份 |
+| --- | --- |
+| character（card） | persona 配置：identity prompt + 形象（VRM、Live2D、声音）+ 默认模型 |
+| session（meta + messages） | **认知线（lineage）**：不运行也存在，持久化，按 `characterId` 分区 |
+| `QueuedSend` / `performSend` | **一次执行**：有 `AbortController` 和 `generation`，结束即消失 |
+| `AssistantTurn` | 一次执行的产物记录 |
+| `GenerationRound` | 一次模型调用 |
+| spark-notify agent | 执行**程序**：无状态的 handler |
+| Minecraft `Brain` | 程序、线程、执行**三者合一**的长驻对象，历史只在内存，进程重启就丢 |
+
+最有力的证据是字段注释：`AssistantTurn.runId` 写着 “Supplied by the agent scheduler when this turn belongs to an identified run”（`packages/core-agent/src/messages/types.ts:51`）。core-agent README 也写了 “A run id refers to a real scheduler execution, not the number of rounds.”。作者在数据模型里已经给“调度器发起的一次执行”预留了身份，只是还没有调度器来填它（B11）。
+
+**判断：值得明确拆开，但要拆成三样，而不是两样。**
+
+- **recipe（程序）**：怎样处理某类 workload。例如 spark-notify 的 plugin 组合、conversation 的 prompt 配方。无状态，可以共享。
+- **lineage（认知线）**：就是 session。持有情节、persona、bindings 和 digest。
+- **run（执行）**：recipe × lineage × 模型选择 × 预算。由 scheduler 发起，产出若干 `AssistantTurn`。
+
+之所以要把 recipe 单独拎出来，是因为同一条 lineage 可以先后被不同 recipe 执行。比如同一个 Discord 频道的 context，一次是回复，一次是整理摘要。同一个 recipe 也可以同时跑在很多 lineage 上。两者混在一起，就会重新得到“一个 Agent = 一个 prompt 文件”，正好是你们想避免的配置地狱。
+
+**不需要为 identity 新建注册表**，session index 就是。要补的只有三处：meta 上的 status、bindings、digest，填上 `runId`，以及 fork 的血缘。
+
+### 13.4 “Agent 可以 inactive 但仍然存在”在 AIRI 里怎么理解
+
+就是 **session 存在但没有 run 在引用它**。这在今天已经是常态：你关掉一个聊天窗口，它的 session 还在 IndexedDB 里，下次 `loadSession` 就恢复了。
+
+所以这不是需要发明的能力，只是需要**被调度器看见**的能力。现在的缺口在于：
+
+- 外部来源的 lineage 根本建不起来（B5）。
+- lineage 没有可以检索的元数据（bindings、digest）。
+- 没有降级和卸载策略，所以无法区分 idle 和 dormant。
+
+反例是 Minecraft `Brain`。它的“存在”依赖进程在运行，历史只在内存，上限 200 条。它是全仓库里唯一一个“不运行就不存在”的认知体。是否要把它的 lineage 也外置成 session 形态，属于 §12 第 8 条的决策。
+
+### 13.5 F：workload 应不应该比 Agent 更接近一等对象
+
+**应该。代码里的一等调度对象本来就不是 Agent，而是各种 workload：**
+
+| 形态 | 位置 | 字段 |
+| --- | --- | --- |
+| `QueuedSend` | core-agent runtime | sessionId、generation、cancelled |
+| `spark:notify` | 协议 | kind、urgency、ttl、destinations |
+| `ScheduledTask` | notebook | priority、status、dueAt、nextNotifyAt |
+| `VisionWorkloadId` | stage-ui | 按 id 取 prompt |
+| `BotEvent` + 优先级层 | Minecraft Brain | 4 级、coalesce |
+| action queue entry | Minecraft Brain | pending/executing/… |
+| unread events | satori-bot | 队列 + 循环上限 |
+
+仓库里叫 “agent” 的东西（spark-notify agent、spark-command 的 “sub-agents”）全都是**处理 workload 的 handler 或接收方**，没有一个是被调度的对象。
+
+所以“调度 workload，再决定用哪条 lineage 和哪个 recipe 去执行”不是新范式，而是**把 7 种分散的 workload 形态收敛成一个信封**。信封只需要一个最小公共子集：`id / kind / origin ref / bindings / salience / deadline / coalesceKey / requirements / parentRunId`，业务负载以引用的形式挂在上面。不要把它做成一个大而全的 Task 模型，否则各模块的 workload 语义又会被迫汇进中心。
+
+### 13.6 D：multi-agent 还是 distributed cognition runtime
+
+**判断：两者都对，但各自只对一侧的边界成立。以网络协议为界。**
+
+- **协议边界之外是联邦式 multi-agent。** plugin-protocol 的词汇就是这么写的：“agents in a network”、“sub-agents”、`destinations`、`ack`、“Assume exactly-once 是错的”。Minecraft Brain、satori、telegram 是真正自治的：各自有快循环、反射层、记忆和失败处理，还可能跑在别的机器上。对它们只能协商（`spark:*`），不能接管。
+- **协议边界之内是共享底座的认知 runtime。** stage 里所有“认知线”共用一个 provider 池、一个 session 存储、一个 speech 出口、一套 persona、一个 leader。它们没有独立的资源，也没有独立的失败域，把它们称为自治 Agent 是不准确的。
+
+混用两种模型会把系统往两个错误方向拉：
+
+- 在边界内用 multi-agent 思维，会推出 Agent 之间互相聊天、每个 Agent 一套私有记忆、Agent 注册中心这些东西。这和“共享底座”正好相反，§9 里的信息丢失问题会被放大。
+- 在边界外用 runtime 思维，会想把 Minecraft 的反射层和 60s 超时收进中央 scheduler。这就是 A 里的 God Object。
+
+边界内最稳定的一等概念是：**workload、lineage（context）、memory、persona（perspective）、capability（模块声明）**。Agent 退化成一次 run，是一个执行单元，而不是最高层抽象。
+
+如果一定要类比，最贴近的是操作系统：
+
+- recipe ≈ 程序
+- lineage ≈ 进程（可以挂起）
+- run ≈ 调度时间片
+- shared context ≈ 共享内存里的一小块
+- 模块 ≈ 设备和驱动
+- 协议 ≈ IPC 和网络
+
+### 13.7 E：动态图的创建权放在哪
+
+**代码里三种模式已经同时存在：**
+
+1. **提议、由 host 落地**：spark-notify 的 LLM 只产出 command 草稿。id、`parentEventId` 由 host 生成，没有 destinations 的草稿直接丢弃（`agent.ts` 的 `expandCommand`）。
+2. **直接下发**：chat LLM 的 `spark_command` 工具在 `execute` 里立即 `sendSparkCommand`（`packages/core-agent/src/agents/spark-command/tools.ts:40-72`），不经过任何准入。
+3. **向上提议**：Minecraft 的 LLM 调 `notifyAiri`，由 AIRI 侧决定是否处理。
+
+**判断：只有 scheduler 能让一个 run 真正存在。其他 run 只能提议。**
+
+- 子 run 通过一个 tool 提交 workload 请求，拿到 ticket。scheduler 同步做准入：接受、合并到已有 workload、拒绝或延迟。子 run 可以按 ticket 等待结果（join）。准入是确定性逻辑，而且 leader 是单线程 JS，不需要任何分布式协商，所以这层中转的延迟可以忽略。§9.3 担心的延迟来自“中转时再调一次 LLM”，不是来自中心化本身。
+- 这样 `parentRunId` 总是由 scheduler 写，因此取消可以级联，预算可以按子树统计，trace 是一棵完整的树。
+- 给**外部自治模块**发 `spark:command` 是效果，不是 spawn。可以从 run 里发出，但要经过 scheduler 的租约检查（§8.2）。今天 chat 工具绕开检查直接发送的路径，P3 时要收进准入层。
+- 深度和扇出设硬上限。
+
+不选“子 Agent 直接 spawn”的原因是它破坏了三件已经靠单点得到的东西：取消（`AbortController` 只在发起方手里）、代际拒绝（`sessionGeneration`）和资源预算。
+
+### 13.8 G：persona 是 Agent 还是 perspective
+
+**代码事实：persona 从来没有进程。**
+
+- card 是纯配置，包括 identity prompt、形象（`vrm/live2d/displayModelId`）、声音、默认模型和 artistry（`packages/stage-ui/src/types/airiCard.ts`）。
+- 没有任何东西按 character 运行。切 card 就是换一套配置。
+- session 按 `characterId` 分区，所以 persona 的连续性已经存放在它的 lineage 里。
+
+**判断：persona 是 persistent perspective + embodiment，不是 Agent。**
+
+它由这些部分构成：
+
+- identity 和风格 prompt。
+- lineage 集合（它参与过的认知线）。
+- memory 的检索边界与 disclosure 策略（§10.2）。
+- **形象资源**：声音和舞台上的模型。
+
+最后一项常被忽略，但它是真实的资源约束。舞台上同一时间通常只显示一个模型，speech 通道也只有一个。多个 persona 同时活跃时，scheduler 需要仲裁的是**形象租约**，不是“哪个 persona 进程在跑”。
+
+有两个容易混淆的东西需要标出来：
+
+- `spark:command.guidance.persona` 是给下游模块的**行为倾向向量**（勇敢度、谨慎度等），和“人格或皮套”不是一个概念。后续命名上最好分开，否则会误导设计。
+- `AiriExtension.agents: Record<string, { prompt, enabled }>` 是一个**从未被使用**的字段，所有写入点都是 `{}`（`airi-card.ts:383, 507`，`airi-card-import-export.ts:244`）。它通往的正是“每个 persona 一套固定 Agent prompt”的配置地狱，不应该作为扩展点。
+
+### 13.9 现有抽象已经回答了的部分
+
+| 问题 | 现有答案 |
+| --- | --- |
+| identity 与 execution 分离 | session 与 `QueuedSend`、`AssistantTurn.runId` 的注释 |
+| inactive 但存在 | session 持久化 + `loadSession` |
+| 由模块判断显著性 | Minecraft `notifyAiri(urgency)`，事件信封字段 |
+| 状态槽位与覆盖语义 | `context:update` 的 `contextId` + replace-self |
+| 会话内说法与权威记录的区分 | `user-account` context 的昵称规则 |
+| 外部事实不获得指令权 | `SystemTurn.authority: 'context'` |
+| 提议、由 host 落地 | spark-notify 的 `expandCommand` |
+| 跨模型恢复不丢内容 | continuation scope + `projectionIssues` |
+| 外部 peer 活性 | server-runtime 心跳与健康事件 |
+| 运行中 run 的取消与过期拒绝 | `AbortController` + `sessionGeneration` |
+
+### 13.10 伪问题：不需要为它们增加架构复杂度
+
+1. **共享池的并发写冲突。** registry 只在 leader 里同步执行，JS 单线程天然串行，同一槽位后写覆盖即可。既然 shared context 不是权威（§13.2），偶尔覆盖错也不会造成事实错误。本文 §7.1 原来提议的 `version/CAS` 已经降为可选。
+2. **进程内 run 的心跳。** 在同一进程里，promise 是否 pending、最近一次 stream 事件的时间、`AbortController` 已经足够。心跳只对跨进程 peer 有意义，而 server-runtime 已经实现了。
+3. **三层记忆的通用 merge 算法。** 三层的语义不同，“不一致”大多是正常状态。真正需要处理的只有信念整合，而那是一个写入新信念的过程，不是 merge。
+4. **Agent 注册中心或 identity 服务。** session index 就是。
+5. **用 LLM 做信息路由。** 有了 lane、destinations、bindings 和 manifest 之后，绝大多数路由是查表。LLM 只用于歧义 triage。
+6. **persona 的 active/inactive 状态。** persona 从不运行，只有 lineage 和 run 有状态。
+7. **通用 DAG 引擎。** 仓库里能看到的所有多步流程（notify → command → emit，Minecraft action queue，artistry 旁路）深度都是 1–2 层，而且是树。有 `parentRunId` 就够了，DAG 执行器等真的出现 join 型 workload 再说。
+8. **由 scheduler 判断“哪个人格适合当前场景”。** 大多数场景由 binding 决定。哪个 Discord 服务器、哪个直播间用哪个皮套，是用户配置，不是认知问题。只有“同一场景里要不要切人格”才需要判断，而这属于 conversation recipe 的职责。
+
+**反过来，这些是真问题，不能当成伪问题：**
+
+- 领域知识漏进 stage 核心（§13.1）。
+- 调度方没有目录（§13.1）。
+- chat 工具绕过准入直接下发 command（§13.7）。
+- `runId` 没有贯通（B11）。
+- 低信任来源的断言可能被误升级成主 memory（§13.2）。
 
 ---
 
