@@ -1,0 +1,242 @@
+{
+  "b1": {
+    "horizonSimSeconds": 180,
+    "offeredLoadErlang": 1.7,
+    "globalQueue_current": {
+      "mergedDiscordRequests": 0,
+      "owner": {
+        "n": 15,
+        "waitP50": 67.46,
+        "waitP95": 113.21,
+        "totalP95": 115.86
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 69.07,
+        "waitP95": 114,
+        "totalP95": 116.91
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 60.61,
+        "waitP95": 108.81,
+        "totalP95": 116.82
+      }
+    },
+    "lanes_unbounded": {
+      "mergedDiscordRequests": 0,
+      "owner": {
+        "n": 15,
+        "waitP50": 0.02,
+        "waitP95": 0.02,
+        "totalP95": 2.87
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 0.02,
+        "waitP95": 1.26,
+        "totalP95": 4.62
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 0.01,
+        "waitP95": 0.02,
+        "totalP95": 14.8
+      }
+    },
+    "lanes_2slots_fifo": {
+      "mergedDiscordRequests": 0,
+      "owner": {
+        "n": 15,
+        "waitP50": 0.3,
+        "waitP95": 1.74,
+        "totalP95": 4.3
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 0.09,
+        "waitP95": 4.15,
+        "totalP95": 6.61
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 0.02,
+        "waitP95": 0.04,
+        "totalP95": 14.87
+      }
+    },
+    "lanes_2slots_priority": {
+      "mergedDiscordRequests": 0,
+      "owner": {
+        "n": 15,
+        "waitP50": 0.33,
+        "waitP95": 1.73,
+        "totalP95": 4.28
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 0.15,
+        "waitP95": 4.15,
+        "totalP95": 6.67
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 0.02,
+        "waitP95": 0.03,
+        "totalP95": 14.88
+      }
+    },
+    "lanes_1slot_fifo": {
+      "mergedDiscordRequests": 0,
+      "owner": {
+        "n": 15,
+        "waitP50": 67.43,
+        "waitP95": 91,
+        "totalP95": 94.03
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 104.04,
+        "waitP95": 156.97,
+        "totalP95": 159.76
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 17.47,
+        "waitP95": 27.48,
+        "totalP95": 37.97
+      }
+    },
+    "lanes_1slot_priority": {
+      "mergedDiscordRequests": 0,
+      "owner": {
+        "n": 15,
+        "waitP50": 1.18,
+        "waitP95": 7.88,
+        "totalP95": 9.86
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 18.32,
+        "waitP95": 92.26,
+        "totalP95": 95.45
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 122.29,
+        "waitP95": 134.15,
+        "totalP95": 148.12
+      }
+    },
+    "lanes_1slot_priority_coalesce": {
+      "mergedDiscordRequests": 26,
+      "owner": {
+        "n": 15,
+        "waitP50": 4.34,
+        "waitP95": 9.53,
+        "totalP95": 12.16
+      },
+      "discord": {
+        "n": 48,
+        "waitP50": 0,
+        "waitP95": 15.48,
+        "totalP95": 18.15
+      },
+      "game": {
+        "n": 11,
+        "waitP50": 36.96,
+        "waitP95": 51.25,
+        "totalP95": 65.21
+      }
+    }
+  },
+  "b1seeds": {
+    "1": {
+      "ownerWaitP95_global": 117.78,
+      "ownerWaitP95_lanes2prio": 1.98,
+      "ownerWaitP95_1slotPrioCoalesce": 10.9,
+      "gameWaitP95_1slotPrioCoalesce": 83.78
+    },
+    "2": {
+      "ownerWaitP95_global": 118.97,
+      "ownerWaitP95_lanes2prio": 2.45,
+      "ownerWaitP95_1slotPrioCoalesce": 9.9,
+      "gameWaitP95_1slotPrioCoalesce": 80.94
+    },
+    "3": {
+      "ownerWaitP95_global": 109.89,
+      "ownerWaitP95_lanes2prio": 1.95,
+      "ownerWaitP95_1slotPrioCoalesce": 11.05,
+      "gameWaitP95_1slotPrioCoalesce": 67.15
+    }
+  },
+  "b2": {
+    "samples": [
+      {
+        "minute": 0,
+        "entries": 3,
+        "tokens": 202
+      },
+      {
+        "minute": 10,
+        "entries": 173,
+        "tokens": 4472
+      },
+      {
+        "minute": 20,
+        "entries": 343,
+        "tokens": 8742
+      },
+      {
+        "minute": 30,
+        "entries": 513,
+        "tokens": 13012
+      },
+      {
+        "minute": 40,
+        "entries": 683,
+        "tokens": 17282
+      },
+      {
+        "minute": 50,
+        "entries": 853,
+        "tokens": 21552
+      },
+      {
+        "minute": 60,
+        "entries": 1023,
+        "tokens": 25822
+      }
+    ]
+  },
+  "b3": [
+    {
+      "messages": 50,
+      "composeMsP50": 0.21,
+      "composeMsP95": 0.28,
+      "promptTokens": 2240
+    },
+    {
+      "messages": 500,
+      "composeMsP50": 0.9,
+      "composeMsP95": 1.35,
+      "promptTokens": 19541
+    },
+    {
+      "messages": 2000,
+      "composeMsP50": 2.03,
+      "composeMsP95": 4.2,
+      "promptTokens": 77036
+    },
+    {
+      "messages": 5000,
+      "composeMsP50": 7.8,
+      "composeMsP95": 9.52,
+      "promptTokens": 192152
+    }
+  ],
+  "b4": {
+    "promptTokensWithoutCharacterPrompt": 161,
+    "toolSchemaTokens": 707
+  }
+}
