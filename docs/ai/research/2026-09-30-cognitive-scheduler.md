@@ -12,12 +12,14 @@
 
 每个概念只用一个名字。代码标识符保持原样。
 
+Agent 不是一种类型。它是任务、执行边界、会话、配方、运行在某一刻结合后的表现（§5.6）。下表里的“对话 Agent”“领域 Agent”“心情 Agent”是角色名，不是代码里的类型。
+
 | 名字 | 含义 | 不再使用的说法 | 对应代码 |
 | --- | --- | --- | --- |
 | 调度器 | 唯一的主 Agent。它只调度，从不对用户说话 | 主 Agent、Scheduler | 新建 |
-| 对话 Agent | 唯一的发声者。同一时刻只有一个 | conversation 实例 | 现有 chat orchestrator |
+| 对话 Agent | 此刻持有语音的那次运行，所以同一时刻只有一个 | conversation 实例 | 现有 chat orchestrator |
 | 领域 Agent | 在自己的通道里行动的 Agent，例如 MC、Discord、直播。不发声 | 子 Agent、模块 Agent | spark-notify、Minecraft `Brain` 等 |
-| 心情 Agent | 唯一。用 JEV 打分，用代码算出心情 | — | 新建 |
+| 心情 Agent | 此刻持有表情基线的那次运行，所以同一时刻只有一个。用 JEV 打分，用代码算出心情 | — | 新建 |
 | 会话 | 一个 Agent 可以恢复的上下文。不运行时也存在 | lineage、认知线、AgentContext、context | `ChatSession` |
 | 运行 | 一次执行。结束就消失，会话保留 | run、execution | `AgentRun`、`runId` |
 | 配方 | 一类任务的处理方式：prompt 片段、工具、默认档位 | recipe、程序 | 新建 |
@@ -28,21 +30,26 @@
 | 共享池 | 所有 Agent 共享的一小块“此刻”信息 | tiny shared context、Working Memory、M3 | 改造后的 `ContextRegistry` |
 | 槽 | 共享池里的一个条目。新值覆盖旧值 | slot、槽位 | `contextId` + `replace-self` |
 | 长期记忆 | 跨会话的长期事实和偏好 | 主 memory、M1 | 新建 |
-| 控制权 | 调度器授予某个会话对某个模块的独占指挥权，有过期时间 | 租约、lease | `lease` |
+| 控制权 | 调度器授予某次运行对某个独占资源的使用权，有过期时间 | 租约、lease | `lease` |
 | 初筛 | 判断一个事件要不要处理、交给谁 | triage | — |
 | 插话 | 高紧急度状态让对话 Agent 在句子边界停下来，转说新内容 | steering | — |
 | 档位 | 模型的质量等级：fast、default、strong | tier | — |
 | 人格 | 角色卡定义的身份、口吻、形象和声音 | persona | `AiriCard` |
+| 执行边界 | 调度器给一次运行生成的约束：能接触哪个世界、能看什么、能做什么、能独占什么、能对谁说 | envelope、scope、policy、Agent 类型 | `ExecutionEnvelope` |
+| 受众 | 一条信息允许到达的人的集合。记忆、槽、运行结果、输出都带受众标签 | 可见范围 | `audience` |
+| 独占资源 | 同一时刻只能有一个运行持有的资源：语音、表情基线、某个模块的控制权 | — | `leases` |
 
 ---
 
 ## 摘要
 
-**结论：可行。必须新建四样东西：调度器、对话 Agent 的输入输出链路、心情 Agent、长期记忆。**
+**结论：可行。必须新建五样东西：调度器、执行边界、对话 Agent 的输入输出链路、心情 Agent、长期记忆。**
 
 | 方面 | 判断 | 依据 |
 | --- | --- | --- |
 | 执行模型 | 调度器只调度。各个 Agent 直接、并发地面对用户，只是输出通道不同 | §1 |
+| Agent 的形态 | 不按类型定义 Agent。调度器为每次运行生成执行边界，再填入配方、记忆视图、能力和模型 | 现在一个 chat orchestrator 已经同时服务私聊和 Discord，缺的只是边界：所有场景共用一个 registry、一个人格、一路广播（§5.6） |
+| 隐私 | 信息必须带受众标签，标签随信息流动 | 现状下主人私聊的回复连同上下文快照会广播给所有模块（B14）。只管读不管写的边界，挡不住私密信息经共享池流到公开场景（§12） |
 | 发声 | 同一时刻只有一个对话 Agent，它是唯一的发声者 | 实测：多个 Agent 共用语音时，结果只有排队或互相截断（§10.1）。AIRI 的语音管线本来就是单出口 |
 | 心情 | 同一时刻只有一个心情 Agent：一次 JEV 调用加一段代码 | 表情接口已经支持连续强度，渲染层不用改（§11） |
 | 执行层 | 原语大多已有，但有阻塞点 | 会话可以直接当可恢复的上下文。全局单队列让所有 Agent 串行：主人私聊 p95 要等 113 秒，改成每个会话一条队列后接近 0（§17.2） |
@@ -53,15 +60,16 @@
 
 **最高的风险**（完整清单见 §19）：
 
-1. 对话 Agent 的历史记的是完整生成文本，用户只听到了打断前的部分。
-2. 花费随 Agent 数量线性增长，现在没有预算闸门。
-3. 共享池膨胀。
-4. JEV 被不可信文本注入。
-5. 低信任来源的说法被写进长期记忆。
+1. 输出事件不带受众，主人私聊的回复和上下文快照会广播给所有模块（B14）。
+2. 对话 Agent 的历史记的是完整生成文本，用户只听到了打断前的部分。
+3. 花费随 Agent 数量线性增长，现在没有预算闸门。
+4. 共享池膨胀。
+5. JEV 被不可信文本注入。
+6. 低信任来源的说法被写进长期记忆。
 
 **起步顺序**：
 
-1. P0–P2（§20）：共享池隔离、会话持久化、每个会话一条队列。
+1. P0–P2（§20）：共享池隔离、输出事件按受众定向、会话持久化、执行边界与受众标签、每个会话一条队列。
 2. 对话 Agent 链路：状态槽、播放截断点回写、按需口语化（§10）。然后做心情 Agent（§11）。
 3. 自动选型：用户给模型标档位，JEV 判断任务难度，每小时预算闸门（§13）。
 
@@ -98,11 +106,22 @@
 | 心情 Agent | 唯一。用 JEV 给当前局面打分，代码把分数算成三维心情并平滑，驱动表情和语调 | 不生成文本 |
 | 钱包 | 唯一的稀缺资源。调度器按每小时预算决定开几个 Agent、各用哪一档模型 | — |
 
-### 1.3 三个核心问题
+### 1.3 Agent 不是类型
+
+上表的角色不是几种 Agent 类型。调度器看到任务后，先生成一个**执行边界**，再把配方、记忆视图、能力和模型填进去，得到一次运行。所谓“某某 Agent”，只是这几样东西在某一刻结合后的表现。
+
+**执行边界决定运行能接触哪个世界，配方决定它在这个世界里怎么思考。**
+
+- 主人私聊和直播解说可以用同一个配方，只是执行边界不同。
+- 对话 Agent 是此刻持有语音的运行，心情 Agent 是此刻持有表情基线的运行。它们只有一个，是因为资源只有一个，不是因为类型特殊。
+- 新增一个社会场景，调度器里不加新的 Agent 种类，只需要领域声明自己的上下文、能力、受众和任务（§5.6）。
+
+### 1.4 四个核心问题
 
 1. 对话 Agent 怎么及时、连贯地说出领域 Agent 的事？（§10）
 2. 心情 Agent 怎么用 JEV 和代码实现？（§11）
-3. 从全部模型自动选型、按钱包分配，现有数据够不够？（§13）能力、价格、上下文都够，只缺质量信号。
+3. 执行边界怎样保证信息不会被说给错的人？（§12）
+4. 从全部模型自动选型、按钱包分配，现有数据够不够？（§13）能力、价格、上下文都够，只缺质量信号。
 
 ---
 
@@ -312,8 +331,11 @@ server-runtime 实现了 peer 心跳（`registry:modules:health:*`）、consumer
 | B11 | **`runId` 没有贯通**。`AssistantTurn.runId` 和 `requestCorrelation.runId` 字段存在，但 orchestrator 从不填 | `chat-orchestrator-runtime.ts:819-822` | 静态推断 |
 | B12 | **中止后重新入队会产生重复的 user turn**。`performSend` 在调用模型前就把 user 消息写进历史。中止只靠递增 generation 作废这一轮，写进去的消息不回滚 | 验证报告 §4.2 | **已验证**（原型 S1） |
 | B13 | **结果默认对所有读者可见**。顶层运行的结果目标是 `all`，直播解说的结果会出现在主人私聊里 | 验证报告 §4.2 | **已验证**（原型 S4） |
+| B14 | **输出事件不带受众**。`output:gen-ai:chat:message` 发出时没有 `destinations`。server-runtime 在没有 destinations、也没有 routing policy 时，广播给所有已认证的 peer，tamagotchi 主进程没有配 routing policy。广播内容包含 `gen-ai:chat.contexts`（registry 快照）和 `composedMessage`。Discord adapter 用 `input.data.discord.channelId` 反推输出目标，其他模块照样收到全文 | `packages/stage-ui/src/stores/mods/api/context-bridge.ts:837-852`、`packages/server-runtime/src/index.ts:935-958`、`integrations/discord-bot/src/adapters/airi-adapter.ts:160-200` | 静态推断 |
 
 B1、B2、B5 现在表现为 bug，本质是同一个假设：**整个系统只有一个前台对话**。动态 Agent 要推翻的就是这个假设。
+
+B2、B13、B14 是另一个假设：**信息没有受众，默认就是所有人**。执行边界和受众标签要推翻的是这个假设（§5.6、§12）。
 
 ---
 
@@ -326,6 +348,7 @@ B1、B2、B5 现在表现为 bug，本质是同一个假设：**整个系统只�
 3. **调度器从 character-orchestrator（spark-notify host）长出来**，不从 chat facade 长出来。它已经在做初筛、定时、重试和下行指令。
 4. **总线就是 plugin-protocol**。共享池、运行状态、下行指令都已经有事件类型，缺的是 stage 侧遵守这些字段。
 5. **长期记忆是真正要新建的东西**。做成 server-sdk 模块（`memory-pgvector` 的壳已经在），能力声明用 `ModuleCapability`（`memory.read/write`）。
+6. **Agent 由执行边界生成，不按类型定义**。调度器为每次运行生成执行边界（§5.6），信息按受众标签流动（§12）。
 
 ### 5.2 分层
 
@@ -335,7 +358,7 @@ L6  输出
       领域 Agent 各自的通道：游戏内 · Discord 文字 · 直播字幕 …
       心情 Agent 驱动：表情强度 · 语调参数
 L5  调度器（不对用户说话，不在输出路径上）
-      任务 · 先验 + JEV · 选会话（恢复、派生、新建）· 选模型
+      任务 · 先验 + JEV · 生成执行边界 · 选会话（恢复、派生、新建）· 选模型
       · 每小时预算 · 监督 · 在 Agent 之间传递信息
 L4  Agent 运行时（core-agent）
       每个会话一条队列，并发执行，数量受预算限制
@@ -373,10 +396,26 @@ interface AgentRun {
   parentRunId?: string // 动态图的边
   workloadId: string
   state: 'queued' | 'working' | 'done' | 'dropped' | 'blocked' | 'expired'
+  envelope: ExecutionEnvelope
   model: { providerId: string, model: string, reason: string }
   budget: { deadlineAt: number, maxSteps: number, maxTokens: number }
   progress: { lastTokenAt?: number, lastToolCallHash?: string, repeatCount: number }
 }
+
+// 执行边界：调度器为每次运行生成（§5.6）
+interface ExecutionEnvelope {
+  scope: string[] // 能接触的世界，例如 'owner:private'、'minecraft:combat'
+  outputs: string[] // 能写的输出通道，例如 'chat:owner'、'voice'、'discord:channel:123'
+  audience: Audience // 由 outputs 算出的有效受众（§12.3）
+  memoryView: { personaId: string, audience: Audience } // 只放行允许到达 audience 的记录
+  capabilities: string[] // 权限，可以同时发给很多运行
+  leases: string[] // 独占资源，例如 'voice'、'expression-baseline'、'module:minecraft:alice'
+  personaId: string
+  recipeId: string
+  modelPolicy: ModelRequirements
+}
+
+type Audience = 'public' | ReadonlySet<string> // 主体，例如 'user:owner'、'discord:channel:123:members'
 ```
 
 ### 5.4 调度器放在哪里
@@ -405,6 +444,67 @@ interface AgentRun {
 
 `authority: 'context'` 是关键。README 写明 “Application context does not gain instruction authority merely because the application supplied it.”。跨人格的记忆、其他 Agent 的输出、外部模块数据，一律以 `context` 进入，不能当成指令。这是防注入和人格安全共用的底座。
 
+### 5.6 执行边界
+
+**执行边界决定运行能接触哪个世界，配方决定它在这个世界里怎么思考。两者结合，才成为一个 Agent。**
+
+调度器看到任务后，按这个顺序生成运行：
+
+```
+任务
+  ↓
+执行边界：范围 · 输出通道 · 受众 · 记忆视图 · 能力 · 独占资源 · 人格 · 模型策略 · 生命周期
+  ↓
+配方：在这个边界里成为怎样的主体，完成什么
+  ↓
+恢复或新建会话 → 运行
+```
+
+**一等概念只有五个**：任务、执行边界、会话、配方、运行。Agent 是它们在某一刻结合后的表现。人格和能力是执行边界的维度。记忆是数据，记忆视图由执行边界算出。
+
+**同一个配方，不同的边界：**
+
+| 维度 | 主人私聊 | 直播间 |
+| --- | --- | --- |
+| 范围 | `owner:private` | `stream:public` |
+| 输出通道 | 主人聊天窗 | 直播的语音和字幕 |
+| 受众 | 主人 | 公开 |
+| 记忆视图 | 当前人格 + 允许主人看到的记录 | 当前人格 + 允许公开的记录 |
+| 能力 | 普通对话工具 | 普通对话工具，不含读取私人日程 |
+| 配方 | 对话配方：当前人格 + 私下社交场景 + 当前任务 | 同一个对话配方：当前人格 + 公开社交场景 + 当前任务 |
+
+程序是同一个，认知边界完全不同。现在的 chat orchestrator 已经用同一个程序服务私聊和 Discord，缺的只是边界：所有场景共用一个 registry（B2）、一个人格（B4）、一路广播（B14）。
+
+**同一个领域，不同的边界：**
+
+| 阶段 | 范围 | 能力 | 配方 |
+| --- | --- | --- | --- |
+| 分析战斗 | `minecraft:combat` | 感知和查询 | 评估威胁，提出动作 |
+| 执行计划 | `minecraft:combat` | 查询 + `module:minecraft` 的控制权 | 执行选定的计划 |
+
+看起来是两个 Agent，实际是同一个运行时被赋予了两个执行边界。
+
+**能力分两类：**
+
+- **权限**：能读、能查、能调用。可以同时发给很多运行。
+- **独占资源**：语音、表情基线、某个模块的控制权。同一时刻只有一个运行持有，由调度器授予控制权（§9.3）。
+
+对话 Agent 就是此刻持有语音的运行，心情 Agent 就是此刻持有表情基线的运行。“只有一个”来自资源的数量，调度器里不需要“Agent 种类”。如果语音不算独占资源，两个带语音输出的执行边界就会同时存在，又回到 §10.1 实测的互相截断。
+
+**能力在执行器一侧强制执行**。对模型可见的 tool 列表在同一个会话里保持稳定，只在运行边界随配方更换。tool 定义在 prompt 前缀里，每一步都改，prompt cache 就会失效（§13.3）。pi 的 `beforeToolCall` 可以阻断调用，是现成的先例。
+
+**领域要声明五件事**，放进 `module:announce` 的 `cognition` 块（§16.1）：
+
+1. 我提供什么上下文。
+2. 我允许什么能力，其中哪些是独占资源。
+3. 我的数据属于什么范围，带什么受众标签。
+4. 我能接受什么任务。
+5. 我的输出通道能到达哪些受众。例如 Discord 公开频道和私信的受众不同。
+
+缺了第 5 条，调度器就算不出一次运行的有效受众（§12.3）。新增一个社会场景时，领域做出这五项声明即可，调度器的代码不用改。
+
+**不要做**按场景划分的 Agent 文件，例如 `privacy-agent.ts`、`private-chat-agent.ts`、`owner-agent.ts`。仓库里的 `AiriExtension.agents: Record<string, { prompt, enabled }>` 从没被使用（§16.8），它就是通往这条路的入口，要删除。
+
 ---
 
 ## 6. 调度器
@@ -415,11 +515,12 @@ interface AgentRun {
 
 1. 把输入和事件统一成任务。来源有 `input:*`、`spark:notify`、带 `destinations` 的 `context:update`、notebook 到期提醒、Agent 的提议、定时器。
 2. 给任务算紧急度（先验 + JEV，§9.2），决定新开、恢复、合并还是不做。
-3. 选会话：恢复、派生或新建（§7.2）。
-4. 给每个 Agent 的每个决策从全部可用模型里选型，并按每小时预算调档位（§13）。
-5. 发起运行，维护运行表，执行监督（§7.3）。
-6. 把领域 Agent 的状态写进共享池里对应的槽，供对话 Agent 和心情 Agent 读取（§10.3）。也在 Agent 之间传递必要信息（§14.4）。
-7. 整理生命周期：idle 降为 dormant、更新摘要、触发记忆回写。
+3. 生成执行边界：范围、输出通道、受众、记忆视图、能力、独占资源（§5.6）。
+4. 选会话：恢复、派生或新建（§7.2）。
+5. 给每个 Agent 的每个决策从全部可用模型里选型，并按每小时预算调档位（§13）。
+6. 发起运行，维护运行表，执行监督（§7.3）。
+7. 把领域 Agent 的状态写进共享池里对应的槽，供对话 Agent 和心情 Agent 读取（§10.3）。也在 Agent 之间传递必要信息（§14.4）。所有写出的信息都带受众标签（§12.4）。
+8. 整理生命周期：idle 降为 dormant、更新摘要、触发记忆回写。
 
 **不做**：
 
@@ -544,7 +645,7 @@ interface SharedPoolEntry extends ContextMessage {
 - **容量**：总预算 `B_pool` 按 token 计（300–800），每个写入者有配额，单条 ≤ 80 token。超出时**拒绝写入**，写入方改写成一个引用。
 - **淘汰**：`keep = 紧急度 × 新鲜度(年龄, 过期时间)`。放不下时淘汰 keep 最低的条目。新条目的 keep 更低时，拒绝新条目。
 - **并发**：按 `contextId` 分槽，默认 replace-self，后写覆盖。registry 只在 leader 里同步执行，本来就是串行，不需要版本号（§16.10）。`append-self` 只允许固定几个事件槽，并限制条数。
-- **按读者过滤**：读者只看到 `destinations` 包含自己、`lane` 匹配的条目。**默认可见范围来自绑定，不是 `all`**（修 B13）。这也修掉了 B2。
+- **按读者过滤**：读者只看到 `destinations` 包含自己、`lane` 匹配、受众标签允许的条目（§12.2）。**默认可见范围来自绑定，不是 `all`**（修 B13）。这也修掉了 B2。
 - **清理**：调度器每个 tick 做确定性清理（过期、超额、写入者已不存在）。
 
 **为什么预算要小**。共享池会进入**每个** Agent 的**每次**调用。设 `B_pool = 1000` token，5 个 Agent，每个每分钟 20 次调用，光共享池就是每分钟 10 万 token，而且每个 Agent 都要被无关内容分散注意力。降到 400，再按读者过滤（平均每个读者看到 40%），每分钟降到 1.6 万 token。原型重放一小时负载，单个读者最多看到 95 token，真正起作用的是过期时间和按读者过滤（验证报告 §4.1 S6）。
@@ -643,8 +744,9 @@ lease(moduleId, holderContextId, expiresAt, salienceAtGrant)
 
 ### 10.2 对话 Agent 与会话
 
-- **同一时刻只有一个对话 Agent**，它独占语音、形象和主人聊天窗。
-- 它可以在不同时候、不同会话以不同人格出现。人格切换是顺序发生的（§12.3）。
+- **对话 Agent 是此刻持有语音的运行**，所以同一时刻只有一个。它独占语音、形象和主人聊天窗。
+- 它可以在不同时候、不同会话以不同人格出现。人格切换是顺序发生的（§12.6）。
+- **语音的受众决定它能说什么**。直播进行时，语音能到达公开受众。这时即使是主人在私聊窗口里问的话，用语音回答也只能用公开记忆（§12.3）。
 - 对话 Agent 的每个会话带绑定：主人私聊、某个直播间各一个。恢复旧会话，就是让对话 Agent 从那里继续。修完 B5 后，这件事几乎是免费的。
 - 领域 Agent（MC、Discord、直播解说）**不发声**。它们并发运行，各有自己的会话：MC Agent 一个，Discord Agent 每个频道一个。并发数受每小时预算限制（§13.3）。
 - 语音层面的冲突因此**不存在**，不需要发言权仲裁，也不需要多路聊天流。
@@ -705,7 +807,7 @@ lease(moduleId, holderContextId, expiresAt, salienceAtGrant)
 
 ### 11.2 单一心情 Agent
 
-- 同一时刻**只有一个心情 Agent**。它不是 LLM，而是一次 JEV 调用加一段代码。
+- **心情 Agent 是此刻持有表情基线的运行**，所以同一时刻只有一个。它不是 LLM，而是一次 JEV 调用加一段代码。
 - **触发**：每个对话轮次，以及调度器判定为紧急的事件。
 - **输入**：当前人格的性格描述、对话 Agent 最近几轮的摘要、各领域 Agent 的状态槽。
 - **输出**：一组情绪维度的分数，交给代码计算和平滑。
@@ -756,15 +858,78 @@ lease(moduleId, holderContextId, expiresAt, salienceAtGrant)
 
 ---
 
-## 12. 人格与记忆可见性
+## 12. 受众与信息流
 
 ### 12.1 现状
 
-人格就是角色卡，会话已经按 `characterId` 分区。缺的是记忆的可见性规则。
+- 人格就是角色卡，会话已经按 `characterId` 分区。
+- **信息没有受众标签，默认就是所有人**：
+  - 输出事件广播给所有模块，带着上下文快照（B14）。
+  - 共享池不按读者过滤（B2），运行结果默认对 `all` 可见（B13）。
+  - 输出目标从输入来源反推。Discord adapter 看到 `input.data.discord.channelId` 才发送，其他模块照样收到全文。
 
-### 12.2 三道防线
+执行边界只管运行能**读**什么还不够。信息流出时也要带标签，否则边界只是一道门禁：私聊运行读了私密记忆，写进共享池，直播运行就能读到。
 
-**标签放在长期记忆的记录上，在组装 prompt 时执行，在输出侧再检查一次**。三道都要有，不能只靠一句“请不要提及”：
+### 12.2 受众标签
+
+每条信息都带受众标签：长期记忆、会话消息、共享池的槽、运行结果、输出事件。
+
+**标签是允许到达的受众集合，不是平铺的字符串**。`owner-private`、`public-stream` 这样的平铺标签回答不了“私聊运行能不能读公开记录”（能）和反过来（不能）。受众集合本身有包含关系：
+
+```
+audience = 'public' | Set<主体>     // 主体例如 user:owner、discord:channel:123:members
+'public' 包含任何集合
+```
+
+**读取规则**：一条记录能进入一次运行，当且仅当这次运行的有效受众 ⊆ 记录允许的受众。
+
+“公开安全的记忆视图”就是这条规则在受众为 `public` 时的结果，不需要单独设计。
+
+这是信息流控制的格模型（Denning，“A Lattice Model of Secure Information Flow”，CACM 1976）在 AIRI 上的最小应用。
+
+### 12.3 有效受众由输出决定
+
+一次运行的受众不由输入来源决定，而由它的输出能到达的所有地方决定：
+
+```
+有效受众 = ∪ { 输出通道 c 的受众 }     // c 取这次运行能写的所有通道
+```
+
+例子：
+
+| 情况 | 输出通道 | 有效受众 | 能用的记忆 |
+| --- | --- | --- | --- |
+| 主人在私聊窗口发问，只回文字 | 主人聊天窗 | 主人 | 允许主人看到的记录，包括私密记录 |
+| 同一句话，直播正在进行，回复会经语音播出 | 主人聊天窗 + 语音 | 公开 | 只有允许公开的记录 |
+| Discord 私信 | 这条私信 | 主人和对方 | 允许这两人看到的记录 |
+
+推论：
+
+- 对话 Agent 每一轮都要按当前的输出通道重新算记忆视图。直播开始或结束，就是一次执行边界的变化。
+- 领域必须声明输出通道的受众（§5.6 第 5 条），否则这里算不出来。
+
+### 12.4 标签随信息流动
+
+运行写出的任何东西，受众取它读过的所有信息的允许受众的交集，也就是最严格的那个：
+
+```
+写出的受众 = ∩ { 读过的信息 r 的允许受众 }
+```
+
+要覆盖的写出路径：
+
+- 共享池的槽。
+- `memory.propose` 提出的候选记忆。
+- 返回给父运行的结果。
+- `spark:command` 和输出事件。输出事件按受众填 `destinations`（修 B14）。
+
+后果：一次读过私密记忆的运行，它写进共享池的槽只有私密受众里的读者看得到。原型里的 B13 就是缺了这一步。
+
+实现成本很低：标签是一个集合，计算只是求交和判断包含，是确定性逻辑，可以写单元测试。初版只需要三类主体：主人、某个外部频道的成员、公开。
+
+### 12.5 记忆的三道防线
+
+**标签放在记忆记录上，在组装 prompt 时执行，在输出侧再检查一次**。三道都要有，不能只靠一句“请不要提及”：
 
 ```ts
 interface MemoryRecord {
@@ -772,6 +937,7 @@ interface MemoryRecord {
   text: string
   provenance: { personaId: string, contextId: string, messageId?: string, runId?: string }
   about: string[] // 主体，例如 user:owner、topic:xxx
+  audience: Audience // 允许到达的受众（§12.2）
   interop: 'shared' | 'persona-private' // 其他人格能否检索到
   disclosure: 'speakable' | 'internal-only' | 'origin-persona-only'
   // speakable：任何能检索到的人格都能说出来
@@ -780,17 +946,27 @@ interface MemoryRecord {
 }
 ```
 
+`audience` 管“能说给谁听”。`interop` 和 `disclosure` 管“哪个人格能用、能不能说成亲身经历”。两者互相独立。
+
 组装规则：
 
-1. **检索时过滤**（确定性，第一道）：`persona-private` 对其他人格不可见。在检索阶段过滤还会让检索更快（验证报告 §5.1）。
+1. **检索时过滤**（确定性，第一道）：先按受众（§12.2），再按 `interop`。`persona-private` 对其他人格不可见。在检索阶段过滤还会让检索更快（验证报告 §5.1）。
 2. **改写**：对当前人格来说，`disclosure !== speakable` 且来源不是自己的记录，改写成第三人称的事实（“已知：用户对 X 过敏”）。不带来源人格，不带“你们聊过”这类经历性措辞，以 `authority: 'context'` + `SegmentInstruction('不要声称亲历，不要提及来源')` 注入。
 3. **输出检查**（第二道）：JEV `noul` 判断回复是否暗示经历过其他人格的事。实测 5/6，唯一的误报 p = 0.53，正好压在线上（验证报告 §1.6）。p 接近 0.5 时交人工或丢弃。
 
+**默认值**：
+
+| 信息 | 受众 | 人格规则 |
+| --- | --- | --- |
+| 用户在私聊里说的事实 | 主人 | `shared + speakable` |
+| 用户在公开场景说的事实 | 公开 | `shared + speakable` |
+| 某个人格在私下场景得到的信息 | 来源场景的受众 | `shared + internal-only` |
+| 明确的秘密设定 | 主人 | `persona-private` |
+| 外部频道里陌生人的说法 | 那个频道的成员 | 不自动写入（§8.3） |
+
 数据标签必须一开始就有，以后无法回填。
 
-**默认值**：用户自己说的事实默认 `shared + speakable`。某个人格在私下场景得到的信息默认 `shared + internal-only`。明确的秘密设定默认 `persona-private`。
-
-### 12.3 人格切换
+### 12.6 人格切换
 
 对话 Agent 同一时刻只有一个，所以人格切换是顺序发生的：
 
@@ -801,7 +977,7 @@ interface MemoryRecord {
 
 - **带过去**：当前任务的状态槽、这个用户在长期记忆里对目标人格可见的记忆、切换原因（作为事实）。
 - **不带过去**：前一个人格的会话历史、它的口吻和自称。
-- 全局 `activeCard` 只保留为“UI 当前展示的人格”，runtime 不再读它（修 B4）。身份在每次运行时从会话的 `personaId` 取。
+- 全局 `activeCard` 只保留为“UI 当前展示的人格”，runtime 不再读它（修 B4）。身份在每次运行时从执行边界的 `personaId` 取。
 
 服务端 `chats` 已经支持多个 `character` 成员，多个人格可以出现在同一段历史里，但任一时刻只有一个在说话。
 
@@ -854,7 +1030,7 @@ cost(m) = α·latency(m) + β·price(m) − γ·quality(m, kind)
 
 **逐步切换**：用 `resolveStep`。例如游戏反应第一步用 fast 档，如果它调用了 `escalate` 工具，或者监督器判定卡住，下一步换强模型。continuation scope 变化时自动走 `RequestSwitch`，已完成的轮次不丢。
 
-**同一轮内不换模型**。换模型会让 prompt cache 失效，pi 的文档也这样建议。只在 turn 边界或监督器介入时切换。
+**同一轮内不换模型**。换模型会让 prompt cache 失效，pi 的文档也这样建议。只在 turn 边界或监督器介入时切换。tool 列表同理，在同一会话里保持稳定，能力在执行器一侧强制执行（§5.6）。
 
 **排除零价格的免费模型**，或者单独处理。按“最便宜”的规则，直播解说和记忆摘要会被路由到免费模型，而免费模型通常有严格的限流（验证报告 §3）。
 
@@ -1065,7 +1241,7 @@ JEV 的价值在于它输出的是**概率，不是文字**。调度决策因此
 调度器只理解名字和数字，不理解含义。它能读的字段全在信封和 manifest 上：任务 `kind`（不透明字符串）、`lane`、绑定、紧急度、截止时间、requirements、`parentRunId`、资源占用。领域含义放在三个地方：
 
 1. **来源**：模块决定 urgency、lane、destinations。Minecraft 已经这么做了。
-2. **模块 manifest 里的 `cognition` 块**：在 `module:announce` 上加一个可选字段，声明 lanes、可接收的 intent、产出的任务 kind 及默认 requirements、JEV 问题的 `criteria`，以及一段“如何理解我的状态”的 prompt 片段。这和 toolset prompt 由扩展拥有是同一个模式。
+2. **模块 manifest 里的 `cognition` 块**：在 `module:announce` 上加一个可选字段，声明 lanes、可接收的 intent、产出的任务 kind 及默认 requirements、JEV 问题的 `criteria`、一段“如何理解我的状态”的 prompt 片段，以及 §5.6 的五项声明（数据范围、受众、独占资源等）。这和 toolset prompt 由扩展拥有是同一个模式。
 3. **配方**：领域 prompt 片段由模块提供，调度器只按 `kind` 把片段接上。
 
 **一条可以检查的规则**：新增一个模块（例如直播）时，调度器的代码改动必须为零，只改模块自己和用户配置。`context-providers/minecraft.ts` 就是现存的反例，要在 P0 时移回 Minecraft 模块。
@@ -1134,11 +1310,12 @@ JEV 的价值在于它输出的是**概率，不是文字**。调度决策因此
 
 最有力的证据是字段注释：`AssistantTurn.runId` 写着 “Supplied by the agent scheduler when this turn belongs to an identified run”（`packages/core-agent/src/messages/types.ts:51`）。core-agent README 也写了 “A run id refers to a real scheduler execution, not the number of rounds.”。作者已经给“调度器发起的一次执行”预留了身份，只是还没有调度器来填（B11）。
 
-**判断：要拆成三样，不是两样。**
+**判断：要拆成四样，不是两样。**
 
 - **配方**：怎样处理某类任务。无状态，可以共享。
 - **会话**：持有经历、人格、绑定和摘要。
-- **运行**：配方 × 会话 × 模型选择 × 预算。由调度器发起，产出若干 `AssistantTurn`。
+- **执行边界**：这次运行能接触哪个世界、能看什么、能做什么、能独占什么、能对谁说。由调度器按任务生成（§5.6）。
+- **运行**：配方 × 会话 × 执行边界 × 模型选择 × 预算。由调度器发起，产出若干 `AssistantTurn`。
 
 配方要单独拎出来，因为同一个会话可以先后被不同配方执行。例如同一个 Discord 频道的会话，一次是回复，一次是整理摘要。同一个配方也可以同时跑在很多会话上。两者混在一起，就又回到“一个 Agent = 一个 prompt 文件”的配置地狱。
 
@@ -1186,9 +1363,9 @@ JEV 的价值在于它输出的是**概率，不是文字**。调度决策因此
 - 在边界内用多 Agent 思维，会推出 Agent 之间互相聊天、每个 Agent 一套私有记忆、Agent 注册中心。§14 的信息丢失会被放大。
 - 在边界外用运行时思维，会想把 Minecraft 的反射层和 60 秒超时收进中央调度器。这就是 A 里的单体。
 
-边界内最稳定的一等概念是：**任务、会话、记忆、人格、能力（模块声明）**。Agent 退化成一次运行。
+边界内的一等概念是：**任务、执行边界、会话、配方、运行**（§5.6）。人格和能力是执行边界的维度，记忆是数据。Agent 是这五样东西在某一刻结合后的表现。
 
-最贴近的类比是操作系统：配方 ≈ 程序，会话 ≈ 可以挂起的进程，运行 ≈ 时间片，共享池 ≈ 一小块共享内存，模块 ≈ 设备驱动，协议 ≈ IPC 和网络。
+最贴近的类比是操作系统：配方 ≈ 程序，会话 ≈ 可以挂起的进程，执行边界 ≈ 进程的权限和命名空间，运行 ≈ 时间片，共享池 ≈ 一小块共享内存，模块 ≈ 设备驱动，协议 ≈ IPC 和网络。
 
 ### 16.7 E：动态图的创建权放在哪
 
@@ -1219,7 +1396,7 @@ JEV 的价值在于它输出的是**概率，不是文字**。调度决策因此
 
 - 身份和风格 prompt。
 - 会话集合。
-- 记忆的检索边界和可见性规则（§12）。
+- 记忆的检索边界和可见性规则（§12.5）。
 - **形象资源**：声音和舞台上的模型。
 - 心情基线、敏感度和衰减速度（§11.5）。
 
@@ -1257,6 +1434,7 @@ JEV 的价值在于它输出的是**概率，不是文字**。调度决策因此
 7. **通用 DAG 引擎**。仓库里所有多步流程（notify → command → emit，Minecraft action queue，artistry 旁路）深度都是 1–2 层，而且是树。有 `parentRunId` 就够了。
 8. **由调度器判断“哪个人格适合当前场景”**。大多数场景由绑定决定：哪个 Discord 服务器、哪个直播间用哪个人格，是用户配置。只有“同一场景里要不要切人格”需要判断，那是对话 Agent 的职责。
 9. **语音的发言权仲裁**。只有一个发声者，就没有可仲裁的对象（§10.1）。
+10. **按场景定义 Agent 类型**。私聊、直播、游戏分析、隐私任务都是执行边界的不同取值（§5.6），不是新的 Agent 种类。
 
 **下面这些是真问题，不能当成伪问题：**
 
@@ -1267,6 +1445,8 @@ JEV 的价值在于它输出的是**概率，不是文字**。调度决策因此
 - 低信任来源的断言被误升级成长期记忆（§16.2）。
 - 中止后重新入队产生重复的 user turn（B12）。
 - 结果默认对所有读者可见（B13）。
+- 输出事件不带受众，广播给所有模块（B14）。
+- 信息没有受众标签，执行边界只能管读，管不住写（§12.4）。
 
 ---
 
@@ -1448,6 +1628,10 @@ JEV、多 Agent 共用语音、调度器原型、记忆检索、Electron 节流�
 | R18 | 外部运行时不成熟 | 中 | apeira 宣布重写，没有步数上限 | 只借鉴设计，不引入依赖 |
 | R19 | 切换模型导致 prompt cache 失效 | 低 | pi 文档明确提醒 | 一轮内不换模型，只在 turn 边界切换 |
 | R20 | 在项目早期过度设计 | 中 | 原型里大部分机制在小规模时就够用（验证报告 §4） | 先做 P0–P2 和对话 Agent 链路，动态图往后放 |
+| R21 | 主人私聊的回复和上下文快照被广播给所有模块 | 高 | B14 | 输出事件按受众填 `destinations`，主进程配 routing policy |
+| R22 | 执行边界只管读不管写，私密信息经共享池或子运行结果流到公开场景 | 高 | §12.4，B13 | 受众标签随信息流动 |
+| R23 | 直播时用语音回答主人的私聊，说出私密记忆 | 高 | §12.3 | 有效受众由所有输出通道算出，每轮重算记忆视图 |
+| R24 | 两个带语音输出的执行边界同时存在 | 中 | §10.1 | 语音作为独占资源，由调度器授予控制权 |
 
 ---
 
@@ -1457,16 +1641,16 @@ JEV、多 Agent 共用语音、调度器原型、记忆检索、Electron 节流�
 
 | 阶段 | 内容 | 顺带解决 | 改动范围 |
 | --- | --- | --- | --- |
-| **P0 纠偏** | registry 按 `destinations/lane` 过滤，加过期时间和总预算，默认可见范围来自绑定。外部来源自动创建 meta（Discord 的 sessionId 变成绑定）。`forkSession` 记录 `parentSessionId`。spark ticker 收归 synced leader。`context-providers/minecraft.ts` 的领域文案移回 Minecraft 模块。主窗口设 `backgroundThrottling: false` | B2、B5、B6、B10、B13 | core-agent registry、session-store、character-orchestrator、tamagotchi 主窗口 |
-| **P1 会话** | 扩展 `ChatSessionMeta`（kind、personaId、bindings、status、digest）。按绑定恢复。运行表，贯通 `runId` | B11 | stage-ui 类型、session-store、orchestrator |
+| **P0 纠偏** | registry 按 `destinations/lane` 过滤，加过期时间和总预算，默认可见范围来自绑定。外部来源自动创建 meta（Discord 的 sessionId 变成绑定）。`forkSession` 记录 `parentSessionId`。spark ticker 收归 synced leader。`context-providers/minecraft.ts` 的领域文案移回 Minecraft 模块。主窗口设 `backgroundThrottling: false`。输出事件按受众填 `destinations` | B2、B5、B6、B10、B13、B14 | core-agent registry、session-store、character-orchestrator、tamagotchi 主窗口 |
+| **P1 会话与执行边界** | 扩展 `ChatSessionMeta`（kind、personaId、bindings、status、digest）。按绑定恢复。运行表，贯通 `runId`。定义 `ExecutionEnvelope` 和受众标签，共享池的槽和运行结果带上受众 | B11、R22 | stage-ui 类型、session-store、orchestrator |
 | **P2 多队列运行时** | 每个会话一条队列，并发数由每小时预算控制。foreground 只服务可见会话。从 `Brain` 抽出 `RunSupervisor`。按运行回滚的中止 API | B1、B12 | core-agent runtime，chat facade 适配 |
 | **P3 调度器** | character-orchestrator 升级为调度器：统一任务入口、紧急度先验映射、合并与丢弃、控制权。JEV 两段式初筛，spark-notify agent 作为 LLM 回退。`module:announce` 加可选的 `cognition` 块。chat 的 `spark_command` 工具收进准入层 | B7（第一批） | core-agent 新模块 + stage-ui 适配 |
 | **P4 对话 Agent 链路** | 状态槽、播放截断点回写、按需口语化、插话、输入归属。Discord 语音频道改为对话 Agent 的输出设备 | R1、R4、R10 | stage-ui speech、chat、discord-bot |
 | **P5 模型路由** | 模型档案聚合 + requirements + `resolveStep` 接入。用户标档位。consciousness 降为默认档 | B3 | provider-inference、stage-ui |
 | **P6 心情 Agent** | JEV 情绪问题 + PAD 计算 + 平滑与衰减 + 映射到 `setEmotion`。`pitch` 和 `rate` 改成可以逐句设置 | R11 | 新模块、stage-ui speech、stage-ui-three |
 | **P7 Prompt 配方** | 把 `streamWithStageAdapters` 里的组装逻辑抽成配方组装器。启用 `history-block` 压缩并导出 compaction。身份不再快照进会话 | B4、B8、B9 | core-agent messages、chat facade |
-| **P8 长期记忆** | 客户端长期记忆 + 出处 + 可见性标签 + 回写管线 + 输出检查 | §8、§12 | 新包 + memory-pgvector |
-| **P9 人格切换** | 每个人格的会话和心情状态保存与恢复。`activeCard` 只给 UI 用 | §12.3 | airi-card、组装器 |
+| **P8 长期记忆** | 客户端长期记忆 + 出处 + 受众与人格标签 + 回写管线 + 输出检查 | §8、§12 | 新包 + memory-pgvector |
+| **P9 人格切换** | 每个人格的会话和心情状态保存与恢复。`activeCard` 只给 UI 用 | §12.6 | airi-card、组装器 |
 | **P10 动态图与外部 Agent** | `parentRunId` 驱动的派生与结果传递。Minecraft Brain、satori 等通过 `spark:*` 接入统一的运行约定 | B7（其余） | 协议扩展 |
 
 P0–P2 不改变任何产品行为。做完以后，“动态 Agent”就只剩调度策略这一件事。
@@ -1482,7 +1666,7 @@ P0–P2 不改变任何产品行为。做完以后，“动态 Agent”就只剩
 | 1 | 哪些决策交给 JEV，是否接受它作为云端依赖，事件内容发给第三方是否符合隐私承诺 | 交给它：要不要反应、交给谁（两段式）、恢复还是新建、记不记忆、模型档位、共享池准入、心情。人格泄露检查只做第二道防线。紧急度只用来排序。`state` 脱敏 | §15.2，验证报告 §1 |
 | 2 | 调度器的宿主 | 短期放桌面 renderer leader，并关掉主窗口的后台节流。中期移到主进程。手机和网页只当客户端 | §5.4，验证报告 §6 |
 | 3 | 长期记忆存在哪里 | 客户端优先：IndexedDB + 内存暴力检索。embedding 模型按多语言实测选。云端只做可选同步 | §8.1，验证报告 §5 |
-| 4 | 人格可见性的默认值，用户能否在 UI 里查看和修改 | 按 §12.2 的默认值。UI 编辑放在 P8 之后 | §12.2 |
+| 4 | 受众和人格可见性的默认值，用户能否在 UI 里查看和修改 | 按 §12.5 的默认值。UI 编辑放在 P8 之后 | §12.5 |
 | 5 | 自动写入记忆的门槛 | JEV `noul` ≥ 0.8 且来源可信，两条同时满足才自动写，其余进待确认区 | §8.3 |
 | 6 | 每小时预算的默认值和降级顺序 | 不设并发上限，设每小时预算。降级顺序：降档、降频、合并，最后关低紧急度的 Agent | §13.3 |
 | 7 | 直播的最小范围 | 先做“弹幕 → JEV 初筛 → 合并 → 解说 Agent”，不碰推流控制。弹幕按不可信文本处理 | 验证报告 §1.5、§4.1 S2 |
@@ -1491,6 +1675,8 @@ P0–P2 不改变任何产品行为。做完以后，“动态 Agent”就只剩
 | 10 | 模型质量档位的来源 | 初版由用户标档位，JEV 判断任务难度，在档位内按价格选。后续引入评测 | §13.3 |
 | 11 | core-agent 是否与 apeira 合流 | 现在不合流。借鉴它的插话语义和 git 式 session refs | §18，验证报告 §7 |
 | 12 | 心情维度的清单和每个人格的参数 | 先用 5 个维度（愤怒、沮丧、开心、紧张、无聊），参数在真实形象上调 | §11 |
+| 13 | 受众主体分多细 | 初版只分三类：主人、某个外部频道的成员、公开。家人、朋友这类主体等有需求再加 | §12.2 |
+| 14 | 直播进行中，主人私聊的回复走不走语音 | 默认只回文字，保留私密记忆。主人明确要求时才用语音，这时按公开受众回答 | §12.3 |
 
 ---
 
@@ -1520,6 +1706,8 @@ P0–P2 不改变任何产品行为。做完以后，“动态 Agent”就只剩
 - 对话 Agent 链路（状态槽、截断点回写、按需口语化）只有设计，没有原型。
 - 心情 Agent 只有设计。JEV 对情绪这类主观判断的准确率没有实测，PAD 映射和平滑也没有原型。
 - 输入归属没有单独实测。
+- 执行边界和受众标签只有设计，没有原型。
+- B14 是静态推断，没有抓包确认各模块实际收到的内容。
 - 自动选型的质量档位用价格代表，没有质量评测。
 - JEV 在 TypeSafe 直连下的延迟和限流。现有数据经 OpenCode 代理测得。
 - 所有 JEV 标注集都偏小（6–48 条），只能说明方向。
@@ -1537,3 +1725,4 @@ P0–P2 不改变任何产品行为。做完以后，“动态 Agent”就只剩
 - pi：[badlogic/pi-mono](https://github.com/badlogic/pi-mono)，npm `@earendil-works/pi-agent-core`、`@earendil-works/pi-coding-agent` 0.99.2（包内的 `docs/models.md`、`docs/virtual-models.md`、`docs/llama-cpp.md`、`examples/extensions/jev-router.ts`）
 - 模型价格：仓库依赖 `model-bank@1.0.20260904203849`
 - 移动端后台限制：Apple Developer Forums、Cordova issue 跟踪（见验证报告 §6.2）
+- 信息流控制：Dorothy E. Denning, “A Lattice Model of Secure Information Flow”, Communications of the ACM 19(5), 1976
