@@ -1,6 +1,6 @@
 # Cognitive scheduler bench harness
 
-Harness for §16 of [the white paper](./2026-09-30-cognitive-scheduler.md). It runs the real core-agent runtime with a fake LLM port.
+Harness for §17 of [the white paper](./2026-09-30-cognitive-scheduler.md). It runs the real core-agent runtime with a fake LLM port.
 
 Setup:
 
