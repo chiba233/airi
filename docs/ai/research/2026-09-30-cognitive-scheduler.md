@@ -1,16 +1,8 @@
 # AIRI 动态认知调度架构白皮书
 
-版本：v0.4（执行模型校正版）
-状态：调研与可行性评估，不是 ADR，也没有实现
 基线：`main` @ `07c6353`（2026-09-30）
 范围：`packages/core-agent`、`packages/stage-ui`、`packages/plugin-protocol`、`packages/server-runtime`、`packages/provider-inference`、`integrations/*`、`plugins/*`、`server/apps/api`，以及外部的 TypeSafe Jev、moeru-ai/apeira、pi
-
-修订记录：
-
-- v0.1：现状调研与目标架构（§0–§12）。
-- v0.2：架构张力复核（§13），并修订 §7.1、§8.1、§8.2。
-- v0.3：校正 JEV 的定义（TypeSafe 的 System 1 决策模型），新增执行摘要、JEV 决策层（§14）、能力矩阵（§15）、实测数据（§16）和风险登记（§17）。
-- v0.4：**纠正执行模型**。主 Agent 只做调度，子 Agent 直接并发面对用户；以云端模型为前提，并发的约束是钱包而不是算力；每个决策都从全部模型里选型。新增“核心执行模型”一节、呈现层（§18）、全模型路由与钱包（§19），并改写执行摘要、§4.2、§5、§8.3、§10.1、§12、§16.2 和 §17。
+配套验证报告：[`2026-09-30-cognitive-scheduler-validation.md`](./2026-09-30-cognitive-scheduler-validation.md)
 
 本文用 `path:line` 引用代码。“已验证”表示跑过临时测试（见附录 A），“静态推断”表示只读了代码、没有执行。
 
@@ -27,7 +19,7 @@
 | 执行层 | 原语大多已有，但有阻塞点 | session 可以充当可恢复的认知线，`resolveStep` 可以逐步切换模型（§2）。但全局单队列让不同子 Agent 实际上串行执行：实测主人私聊 p95 要等 113 秒，改成每个 context 一条 lane 后接近 0（§16.2） |
 | 模型选型 | 全模型自动路由可行，**唯一缺的是质量信号** | model-bank 目录里有 2,104 个模型带齐了价格、上下文和能力。路由只能靠硬约束过滤加价格排序，“哪个更好”没有数据（§19.1） |
 | 钱包 | 并发的唯一约束 | 5 个子 Agent 同时在线的场景下：全部用一个强模型每小时 9.02 美元；全模型路由加 prompt cache 后是 0.27–1.34 美元，具体取决于核心 Agent 的档位（§19.2）。JEV triage 每小时 0.017 美元，可以忽略 |
-| 上下文 | 要先治理 | 共享上下文每小时膨胀约 2.6 万 token（§16.3），加上预算和 TTL 后，单个读者不到 100 token（验证报告 §2）。恢复长 context 的成本在 token，不在 CPU（§16.4） |
+| 上下文 | 要先治理 | 共享上下文每小时膨胀约 2.6 万 token（§16.3），加上预算和 TTL 后，单个读者不到 100 token（验证报告 §4）。恢复长 context 的成本在 token，不在 CPU（§16.4） |
 | 生态 | 借鉴设计，不替换运行时 | pi 的执行层最完整，apeira 同源但正在重写。两者都没有调度器、呈现仲裁、长期记忆和 persona（§15） |
 
 **最高的风险**（完整清单见 §17）：
@@ -46,17 +38,15 @@
 
 ---
 
-## 核心执行模型（v0.4 校正）
+## 核心执行模型
 
-v0.1–v0.3 有两处根本性的误读，v0.4 在这里先纠正。后文凡是和本节冲突的地方，一律以本节为准。
+这个架构有两个前提，后文所有设计都建立在它们之上。
 
-**误读一：把并发当成了算力问题。**
-这个架构的前提是云端模型，云端本身就能并发，所以同时开多个子 Agent 的约束**只有钱包**，不是吞吐。v0.3 里的“模型槽”“Erlang 负载”“单槽过载”“本地回退分类器”都建立在本地推理之上，**不属于初版的讨论范围**，已经降级为附注。模型选择也不是“换一个更好的模型”，而是**每一个能自动化的决策，都从当前可用的全部模型里选**。
+**一、模型走云端，并发的约束是钱包。**
+云端模型本身就能并发，所以同时开多个子 Agent，只受成本限制，不受吞吐限制。模型选择也不是“给某个 Agent 绑一个模型”，而是**每一个能自动化的决策，都从当前可用的全部模型里选**。本地推理不在讨论范围内。
 
-**误读二：把“主 Agent 调度”和“子 Agent 对用户说话”搞混了。**
-多 Agent 的目的，是让**子 Agent 直接、并发地面对用户**。边玩 MC 边聊天，就是两个子 Agent 同时在对用户输出，只是呈现方式不同：一个在游戏里行动，一个在聊天框里说话。主 Agent 只做调度，**从不开口，也不转述**，也不站在子 Agent 和用户之间。v0.3 里“结果回流给主 Agent、由它决定谁开口”“主人私聊抢占游戏任务”这类写法都是错的。
-
-校正后的模型：
+**二、子 Agent 直接、并发地面对用户；主 Agent 只调度。**
+多 Agent 的目的，是让子 Agent 各自直接对用户输出，区别只在呈现方式。边玩 MC 边聊天，就是两个子 Agent 同时在输出：一个在游戏里行动，一个在聊天框里说话。主 Agent 只做调度，**从不开口，也不转述**，不站在子 Agent 和用户之间。
 
 ```
 用户 ⇄ 呈现层（语音 · 形象 · 聊天流 · 弹幕 · 游戏内 · Discord · 直播）⇄ 子 Agent A / B / C …（并发，各自直接输出）
@@ -71,20 +61,20 @@ v0.1–v0.3 有两处根本性的误读，v0.4 在这里先纠正。后文凡是
 | 呈现层 | 把多个子 Agent 的并发输出映射到通道上。独占通道（语音、形象）做发言权仲裁，并发通道（文字、弹幕、游戏内、Discord）直接并行 | 不做认知决策 |
 | 钱包 | 唯一的稀缺资源。调度器按预算决定开几个子 Agent、各用哪一档模型 | — |
 
-这个模型带出两个 v0.3 完全没有讨论的核心问题，分别在 §18 和 §19 里用实测回答：
+这个模型带出两个核心问题，分别在 §18 和 §19 里用实测回答：
 
 1. **多个子 Agent 同时对用户输出时，AIRI 现有的呈现层能不能承接？**（§18）答案是不能，语音和聊天流都是单路的。
 2. **从全部模型自动选型、按钱包分配，现有数据够不够？**（§19）能力、价格和上下文都够，唯独缺质量信号。
 
 ---
 
-## 0. 先校正几个事实
+## 0. 设想与代码现状
 
-调研输入里有几条设想和仓库现状对不上。后面的设计都基于校正后的事实。
+调研输入里有几条设想和仓库现状不一致。后面的设计都基于代码现状。
 
 | 设想 | 代码事实 | 影响 |
 | --- | --- | --- |
-| JEV 在调度里的角色需要另行定义 | **v0.1 这一行写错了。** JEV 是 TypeSafe 在 2026-09-15 发布的 System 1 决策模型：不生成文本，只对给定的 `state` 回答 `choice`、`score`、`noul` 三类有类型的问题，并返回概率（§14）。仓库里确实还没有接入它（代码零命中），这一点仍然成立 | JEV 正好补上调度器的“快判断”层：显著性、路由、resume 还是 create、是否值得记忆。原先留给 `SalienceFn` 的插槽，就是 JEV 的位置 |
+| JEV 可以直接用于调度 | JEV 是 TypeSafe 在 2026-09-15 发布的 System 1 决策模型：不生成文本，只对给定的 `state` 回答 `choice`、`score`、`noul` 三类有类型的问题，并返回概率（§14）。仓库里还没有接入它 | JEV 正好补上调度器的“快判断”层：显著性、路由、resume 还是 create、是否值得记忆、模型档位 |
 | 已经有直播模块 | `plugins/airi-plugin-bilibili-laplace/src/index.ts` 只有一行 `console.warn('WIP')`。`danmaku` 只是 tamagotchi 浮动聊天窗口的显示样式（#2704）。没有弹幕接入、直播状态或推流控制 | 直播 workload 要从零设计。好在它可以直接复用 `spark:notify` 和 `context:update`，不需要新的传输层 |
 | 主 Agent 的长期 memory 可以复用 | stage 侧**没有任何长期记忆**。`packages/memory-pgvector/src/index.ts` 是空的 server-sdk 客户端（`module:configure` 的处理函数为空）。`server/apps/api/src/schemas/characters.ts:117` 的 `initialMemories` 还是 TODO。唯一真正的向量记忆在 `integrations/telegram-bot`（pgvector + `findRelevantMessages`），而且和 AIRI 主体完全隔离 | 主 memory 是**最大的空白**，不是升级对象。好处是没有历史包袱，可以直接按 persona 安全要求设计 |
 | 现在是一个“大 Agent” | 实际上已经有 **6 个彼此独立的 Agent 循环**：stage chat orchestrator、spark-notify agent、Minecraft `Brain`、satori-bot loop、telegram-bot agent、artistry “Director”。它们各自实现队列、预算、中断和历史 | 问题不是“大 Agent 太大”，而是“小 Agent 各自为政”。调度器的首要价值是给它们**统一的生命周期和路由契约** |
@@ -499,14 +489,14 @@ interface WorkingMemoryEntry extends ContextMessage {
   writer: string // agentContextId 或 module id
   salience: number // 0..1，由 JEV 的 score 给出（§14）
   expiresAt: number // TTL
-  version?: number // 可选。见 §13.10，初期不需要
+  version?: number // 可选，见 §13.10
   sourceRef?: { refType: string, targetId: string } // 指回原始来源
 }
 ```
 
 - **容量**：总预算 `B_wm` 按 token 计（建议 300–800），每个 writer 有配额，单条 ≤ 80 token。超出时**写入被拒**，写入方必须改写成一个 reference。
 - **准入与淘汰**：`keep = salience × freshness(age, ttl)`。写入时如果放不下，就淘汰 keep 最低的条目。低于新条目的 keep 才淘汰，否则拒绝新条目。
-- **并发**：按 `contextId` 分槽，默认 replace-self，同一槽位后写覆盖（LWW）。registry 只在 leader 里同步执行，本来就是串行的，所以初期不需要 CAS（§13.10 修订）。`append-self` 只允许固定几个事件型槽位，并设条数上限。
+- **并发**：按 `contextId` 分槽，默认 replace-self，同一槽位后写覆盖（LWW）。registry 只在 leader 里同步执行，本来就是串行的，所以不需要 CAS（§13.10）。`append-self` 只允许固定几个事件型槽位，并设条数上限。
 - **读取投影**：读者只看到 `destinations` 包含自己（或 `all`）、`lane` 匹配的条目。这就修掉了 B2。
 - **整理**：调度器每个 tick 做确定性清理（过期、超额、孤儿 writer）。LLM 合并只在超过预算的次数达到阈值时触发。
 
@@ -537,7 +527,7 @@ interface WorkingMemoryEntry extends ContextMessage {
 ```ts
 interface Workload {
   id: string
-  kind: string // 由生产者声明的不透明字符串，调度器不解析含义（§13.1 修订）
+  kind: string // 由生产者声明的不透明字符串，调度器不解析含义（§13.1）
   origin: { event: string, eventId: string, source: string } // 指回 spark:notify 或 input 等
   bindings: string[]
   salience: number // 0..1，见 8.2
@@ -585,7 +575,7 @@ lease(moduleId, holderContextId, expiresAt, salienceAtGrant)
 
 ### 8.3 Model routing
 
-> v0.4：原则是**每个能自动化的决策，都从当前可用的全部模型里选**，而不是给某个 Agent 绑定一个模型。本节原有的 ModelProfile 设计仍然成立，实测数据和“缺质量信号”的结论见 §19。
+原则是**每个能自动化的决策，都从当前可用的全部模型里选**，而不是给某个 Agent 绑定一个模型。实测数据和“缺质量信号”的结论见 §19。
 
 **ModelProfile** 全部由现有数据派生：
 
@@ -717,7 +707,7 @@ interface MemoryRecord {
 | --- | --- | --- | --- |
 | **P0 纠偏** | registry 按 `destinations/lane` 投影，加 TTL 和总预算。外部绑定来源自动创建 meta（Discord 的 sessionId 变成 bindings）。`forkSession` 记录 `parentSessionId`。spark ticker 收归 synced leader。`context-providers/minecraft.ts` 的领域文案移回 Minecraft 模块（§13.1） | B2、B5、B6、B10 | core-agent registry、session-store、character-orchestrator |
 | **P1 AgentContext** | 扩展 `ChatSessionMeta`（kind、personaId、bindings、status、digest）。按绑定键 resume。run 表 + 贯通 `runId` | B11、§6.1 | stage-ui 类型、session-store、orchestrator |
-| **P2 多 lane runtime** | 每个 context 一个队列 + 全局信号量。foreground 只服务可见 context。从 `Brain` 抽出 `RunSupervisor` 放进 core-agent | B1、§6.3 | core-agent runtime，chat facade 适配 |
+| **P2 多 lane runtime** | 每个 context 一个队列，并发数由每小时预算控制。foreground 只服务可见 context。从 `Brain` 抽出 `RunSupervisor` 放进 core-agent | B1、§6.3 | core-agent runtime，chat facade 适配 |
 | **P3 调度器** | character-orchestrator 升级为 Scheduler：统一 workload 入口、salience 先验映射、合并与丢弃（§16.2）、租约。先用 JEV 做 triage 试点（§14），spark-notify agent 作为 LLM 回退。`module:announce` 增加可选的 `cognition` 块作为目录。chat 的 `spark_command` 工具收进准入层（§13.1、§13.7） | B7（第一批：spark 与 chat 合流） | core-agent 新模块 + stage-ui 适配 |
 | **P4 模型路由** | ModelProfile 聚合 + requirements + `resolveStep` 接入。consciousness 降级为默认档 | B3 | provider-inference、stage-ui |
 | **P5 Prompt 配方** | 把 `streamWithStageAdapters` 里的组装逻辑下沉成 recipe 组装器。启用 `history-block` 压缩并导出 compaction。identity 不再快照进 session | B4、B8、B9 | core-agent messages、chat facade |
@@ -731,8 +721,8 @@ P0–P2 不改变任何产品行为，但做完以后，“动态 Agent”就只
 
 ## 12. 需要你们决定的问题
 
-1. **哪些决策交给 JEV**。§14.2 给出了建议清单。需要确认三件事：是否接受 JEV 作为云端依赖（目前没有本地版本）；中文和日文输入的置信度是否达标（§14.5，尚未实测）；事件内容发给第三方是否符合 AIRI 的隐私承诺。
-2. **调度器的宿主**。验证报告 §5 给出的结论是：短期放在桌面 renderer leader，并关掉主窗口的后台节流；中期移到主进程；手机和网页只当客户端。
+1. **哪些决策交给 JEV**。§14.2 给出了建议清单。需要确认两件事：是否接受 JEV 作为云端依赖；事件内容发给第三方是否符合 AIRI 的隐私承诺。中文和日文的实测见验证报告 §1.3。
+2. **调度器的宿主**。验证报告 §6 给出的结论是：短期放在桌面 renderer leader，并关掉主窗口的后台节流；中期移到主进程；手机和网页只当客户端。
 3. **主 memory 存哪里**。是纯本地（duckdb-wasm 或 IndexedDB）、自托管 pgvector、还是官方云端？这会影响隐私承诺，以及跨设备的 persona 一致性。
 4. **persona 可见性的默认值**。§10.2 的建议默认值是否符合产品设定？用户能否在 UI 里查看和改写记忆的可见性？
 5. **自动记忆写入的门槛**。全自动、调度器审批、还是用户确认？
@@ -740,15 +730,14 @@ P0–P2 不改变任何产品行为，但做完以后，“动态 Agent”就只
 7. **直播 workload 的最小范围**。只做弹幕到 commentary，还是包含推流控制？它是 persona 驱动还是独立皮套？
 8. **外部 Agent 的接入深度**。Minecraft Brain、satori、telegram 是保持自治，只通过 `spark:*` 协作；还是把它们的 LLM 调用也交给中央调度器（统一模型路由和预算）？前者改动小，后者一致性强。
 9. **Discord 会话的粒度**。按 guild、按频道，还是按 thread？B5 修复时就要确定，因为它就是 bindings 的形状。
-10. **本文档的去向**。仓库规则要求文档用 simple English。如果要提交到上游 `moeru-ai/airi`，需要改写成英文，并拆成 ADR。
-11. **模型质量档位的来源**。目录里没有质量信号（§19.1）。建议初版由用户打标签，JEV 判断任务难度，后续再引入评测。
-12. **core-agent 与 apeira 是否合流**。两者同源同栈，apeira 正在重写。是现在就参与它的新设计，还是等它稳定后再评估？
+10. **模型质量档位的来源**。目录里没有质量信号（§19.1）。建议初版由用户打标签，JEV 判断任务难度，后续再引入评测。
+11. **core-agent 与 apeira 是否合流**。两者同源同栈，apeira 正在重写。是现在就参与它的新设计，还是等它稳定后再评估？
 
 ---
 
 ## 13. 架构张力复核（A–G）
 
-这一节逐条检验讨论中提出的 7 个 design tension。每条先给代码事实，再给判断。有几条会推翻本文前面的写法，已经在正文对应位置标了“§13 修订”。
+这一节逐条检验讨论中提出的 7 个 design tension。每条先给代码事实，再给判断。
 
 ### 13.1 A：scheduler 会不会变成新的单体
 
@@ -793,7 +782,7 @@ scheduler 可以理解名字和数字，不理解含义。它能读的字段全�
 
 **一条可检查的适应度规则**：新增一个模块（例如直播）时，scheduler 的代码改动必须为零，只允许改模块自己和用户配置。`context-providers/minecraft.ts` 就是违反这条规则的现存反例，它应该在 P0 时移回 Minecraft 模块，以 manifest 的 prompt 片段或 replace-self 状态的形式提供。
 
-**对前文的修订**：§8.1 和 §8.2 原来的写法里有 `'game:react'` 这类 kind 示例，还有“用户对话 ≥ 0.8”这种内置偏好，暗示 scheduler 懂领域，已经改掉。跨来源的偏好（例如“主人私聊优先于 Discord 群”）是**用户配置**，不是 scheduler 的知识。
+跨来源的偏好（例如“主人私聊优先于 Discord 群”）是**用户配置**，不是调度器的知识。所以 §8.1 的 workload `kind` 是不透明字符串，§8.2 的先验只做数值映射。
 
 ### 13.2 B：三层状态的认知语义
 
@@ -980,7 +969,7 @@ scheduler 可以理解名字和数字，不理解含义。它能读的字段全�
 
 ### 13.10 伪问题：不需要为它们增加架构复杂度
 
-1. **共享池的并发写冲突。** registry 只在 leader 里同步执行，JS 单线程天然串行，同一槽位后写覆盖即可。既然 shared context 不是权威（§13.2），偶尔覆盖错也不会造成事实错误。本文 §7.1 原来提议的 `version/CAS` 已经降为可选。
+1. **共享池的并发写冲突。** registry 只在 leader 里同步执行，JS 单线程天然串行，同一槽位后写覆盖即可。既然 shared context 不是权威（§13.2），偶尔覆盖错也不会造成事实错误。所以 §7.1 的 `version` 字段是可选的。
 2. **进程内 run 的心跳。** 在同一进程里，promise 是否 pending、最近一次 stream 事件的时间、`AbortController` 已经足够。心跳只对跨进程 peer 有意义，而 server-runtime 已经实现了。
 3. **三层记忆的通用 merge 算法。** 三层的语义不同，“不一致”大多是正常状态。真正需要处理的只有信念整合，而那是一个写入新信念的过程，不是 merge。
 4. **Agent 注册中心或 identity 服务。** session index 就是。
@@ -1052,30 +1041,36 @@ JEV 的价值不只是“便宜的 LLM 替代品”，而在于它的输出是**
 
 ### 14.4 成本
 
-实测数据见 §16.5。结论：按每 1 万次决策计，JEV 约 0.09 美元，现在的 LLM triage 在 1.41–23.61 美元之间，差 15–250 倍。这个差距让“每个事件都做一次判断”从奢侈变成默认选项，也改变了 §5 的前提：调度器可以对每个 workload 都问一次 JEV，而不只在“歧义时”才调用。
+实测数据见 §16.5。结论：按每 1 万次决策计，JEV 约 0.09 美元，现在的 LLM triage 在 1.41–23.61 美元之间，差 15–250 倍。这个差距让“每个事件都做一次判断”从奢侈变成默认选项：调度器可以对每个后台 workload 都问一次 JEV，而不只在“歧义时”才调用。
 
 ### 14.5 风险与缓解
 
 | 风险 | 缓解 |
 | --- | --- |
 | **注入**：Discord 消息和弹幕会进入 `state`，可能被人利用来抬高显著性、改变路由 | 不可信文本放在独立字段，并在 `instructions` 里标明它只是数据。最终显著性乘以来源信任系数，陌生人来源设上限。JEV 的结果**永远不能单独授予权限** |
-| **非英语校准未知**：已知韩语置信度明显下降，中文和日文没有公开数据 | 上线前用 AIRI 的真实事件做中日英三语标注集，测准确率和校准曲线。置信度低于阈值时退回先验 |
-| **云依赖与隐私**：事件内容会发送给第三方 | 对 `state` 做脱敏，只发送判断需要的字段。提供 pi 那种本地 classifier 回退 |
+| **非英语表现**：公开资料称韩语置信度明显下降 | 小样本实测中文、日文未见掉点（两段式路由 15/16、16/16，验证报告 §1.3）。上线前仍需用几百条真实事件复测，置信度不足时退回先验 |
+| **云依赖与隐私**：事件内容会发送给第三方 | 对 `state` 做脱敏，只发送判断需要的字段。JEV 不可用时退回确定性先验 |
 | **可用性**：服务故障或限流 | 每个决策都有确定性回退（§14.2 表的最后一列）。JEV 只提升质量，不作为必需依赖 |
 
-### 14.6 还缺的实测
+### 14.6 实测结果与缺口
 
-以下三项都需要 API key，本环境没有：
+在 AIRI 事件上的准确率、校准度、注入防护、延迟和中日英三语表现，见验证报告 §1。主要结论：
 
-- 在 AIRI 事件上的准确率和校准度。
-- 从主要用户地区发起时的真实延迟分布。
-- 中文和日文的置信度表现。
+- 两段式路由 47/48。
+- 置信度 ≥ 0.8 时准确率 89%。
+- 分字段写法挡住了 4/4 的注入样本。
+- p50 约 320ms。
+
+还缺的部分：
+
+- TypeSafe 直连时的延迟与限流（验证报告的数据经 OpenCode 代理测得）。
+- 几百条规模的真实事件标注集。
 
 ---
 
 ## 15. 能力矩阵：AIRI、apeira、pi
 
-版本：AIRI 取 `main@07c6353`（core-agent 与 stage-ui）。apeira 取 npm `@apeira/core`、`@apeira/session`、`@apeira/storage` 0.0.8。pi 取 npm `@earendil-works/pi-agent-core` 与 `pi-coding-agent` 0.99.2。三者的判断都来自类型声明、源码和包内文档，没有运行 apeira 和 pi。
+对比对象：AIRI 取 `main@07c6353`（core-agent 与 stage-ui）。apeira 取 npm `@apeira/core`、`@apeira/session`、`@apeira/storage` 0.0.8。pi 取 npm `@earendil-works/pi-agent-core` 与 `pi-coding-agent` 0.99.2。三者的判断都来自类型声明、源码和包内文档，没有运行 apeira 和 pi。
 
 图例：✅ 已具备，⚠️ 部分具备或有前提，❌ 没有。
 
@@ -1134,9 +1129,7 @@ JEV 的价值不只是“便宜的 LLM 替代品”，而在于它的输出是**
 - **时间缩放**：B1 里 1 个模拟秒等于 20ms 真实时间。计时抖动约为 ±0.5 模拟秒。
 - **复现**：harness 源码和原始数据见附录 A。
 
-### 16.2 B1：队头阻塞与调度策略
-
-> v0.4：本节里的“模型槽”配置模拟的是本地推理的容量，**不属于初版的讨论范围**。在云端前提下，仍然成立的结论只有一条：**现有全局单队列会让本该并发的子 Agent 串行执行**，也就是下表的第一行对比第二行。1 槽和 2 槽的结果保留作参考。
+### 16.2 B1：全局单队列让子 Agent 串行执行
 
 **负载**：180 个模拟秒，种子 42。
 
@@ -1146,34 +1139,16 @@ JEV 的价值不只是“便宜的 LLM 替代品”，而在于它的输出是**
 | 两个 Discord 群 | 48 | 2–4 秒 | 约 4 秒一次 |
 | 主人私聊 | 15 | 1.5–3 秒 | 约 12 秒一次 |
 
-总负载为 **1.7 Erlang**，也就是平均同时需要 1.7 个模型槽。
-
 表中数值为等待开始的时间，单位是模拟秒：
 
-| 配置 | 主人 p50 | 主人 p95 | Discord p95 | 游戏 p95 | 被合并的请求 |
-| --- | --- | --- | --- | --- | --- |
-| 现状：全局单队列 | 67.5 | **113.2** | 114.0 | 108.8 | 0 |
-| 每 context 一条 lane，不限并发 | 0.0 | 0.0 | 1.3 | 0.0 | 0 |
-| lane + 2 槽，FIFO | 0.3 | **1.7** | 4.2 | 0.0 | 0 |
-| lane + 2 槽，优先级 | 0.3 | 1.7 | 4.2 | 0.0 | 0 |
-| lane + 1 槽，FIFO | 67.4 | 91.0 | 157.0 | 27.5 | 0 |
-| lane + 1 槽，优先级 | 1.2 | 7.9 | 92.3 | **134.2** | 0 |
-| lane + 1 槽，优先级 + 同群合并 | 4.3 | 9.5 | 15.5 | 51.3 | 26/48 |
-
-换种子复测，趋势稳定：
-
-| 种子 | 全局队列：主人 p95 | 2 槽 + 优先级：主人 p95 | 1 槽 + 优先级 + 合并：主人 p95 | 同一配置：游戏 p95 |
+| 配置 | 主人 p50 | 主人 p95 | Discord p95 | 游戏 p95 |
 | --- | --- | --- | --- | --- |
-| 1 | 117.8 | 2.0 | 10.9 | 83.8 |
-| 2 | 119.0 | 2.5 | 9.9 | 80.9 |
-| 3 | 109.9 | 2.0 | 11.1 | 67.2 |
+| 现状：全局单队列 | 67.5 | **113.2** | 114.0 | 108.8 |
+| 每个 context 一条 lane，并发执行 | 0.0 | **0.0** | 1.3 | 0.0 |
 
-**解读：**
+换种子复测，现状下主人私聊的 p95 等待分别是 117.8、119.0、109.9 秒（种子 1、2、3），趋势稳定。
 
-1. **现状的问题是结构性的**。只要有持续的后台负载，主人私聊就要排将近 2 分钟的队。这里的瓶颈不是算力，而是全局单队列（B1）。
-2. **容量够的时候，优先级没有作用**。2 槽时 FIFO 和优先级的结果几乎一样。所以调度器的复杂度只在资源紧张时才有回报，不要在 P2 之前先做复杂的优先级。
-3. **容量不够的时候，优先级只是把饥饿转给别人**。1 槽加优先级后，主人等待降到 7.9 秒，但游戏等待涨到 134 秒。真正让系统恢复稳定的是**合并**：同一个群的排队请求合成一个，26 个请求被吸收，三方的等待都回到可接受范围。这是一条有数据支撑的设计结论：**合并与丢弃要作为调度器的一等能力**，排在优先级之前。
-4. **推论（v0.4 修订）**：第 2、3 点只在本地推理容量受限时成立，初版不讨论本地推理。在云端前提下，合并的价值不在“卸载算力”，而在**省钱**，以及避免同一个频道被连续刷屏式地回复。
+**解读**：只要有持续的后台负载，主人私聊就要排将近 2 分钟的队。原因不是模型慢，而是 core-agent 的全局单队列让本该并发的子 Agent 串行执行（B1）。每个 context 一条 lane 之后，等待基本消失。
 
 ### 16.3 B2：共享上下文的膨胀
 
@@ -1269,15 +1244,15 @@ JEV 的价值不只是“便宜的 LLM 替代品”，而在于它的输出是**
 | R3 | 长 context 恢复的 token 成本 | 高 | §16.4：2000 条消息 7.7 万 token | dormant 阶段生成 digest；resume 前压缩；启用 `history-block` |
 | R4 | JEV 被不可信文本注入 | 高 | 公开测试中注入后以 82% 和 73% 的置信度给出错误答案 | 来源信任系数与上限；JEV 永不单独授予权限 |
 | R5 | 低信任来源的说法被写进主 memory | 高 | §13.2：Discord 陌生人的发言以 user 身份进入会话 | provenance 与信任门槛；写入需要调度器批准 |
-| R6 | JEV 在中文和日文上的校准未知 | 中 | 韩语置信度下降 40–70%，中日文没有数据 | 三语标注集实测；置信度不足时退回先验 |
-| R7 | 云依赖与隐私 | 中 | JEV 只有云端服务 | 脱敏；本地 classifier 回退（参考 pi 的 llama.cpp 方案） |
+| R6 | JEV 在中文和日文上的表现只有小样本数据 | 中 | 小样本未见掉点（验证报告 §1.3），但样本只有 16 条每语言 | 用几百条真实事件复测；置信度不足时退回先验 |
+| R7 | 云依赖与隐私 | 中 | JEV 只有云端服务 | 脱敏；JEV 不可用时退回确定性先验 |
 | R8 | 调度器变成新的单体 | 中 | §13.1：领域知识已经漏进 chat store | manifest 的 `cognition` 块；“新增模块时调度器零改动”的适应度规则 |
 | R9 | renderer 宿主的生命周期 | 中 | leader 随窗口存亡 | 在 §12 决定宿主位置 |
 | R10 | 多 lane 下语音和舞台形象冲突 | 中 | 只有一个 speech 通道，舞台上通常只显示一个模型 | 形象租约（§13.8） |
 | R11 | 并行 run 增多后难以调试 | 中 | `runId` 没有贯通（B11） | 贯通 `runId`、`parentRunId`；接入 `contextObservability` |
 | R12 | 依赖外部运行时的成熟度 | 中 | apeira 宣布将重写 | 只借鉴设计，不引入依赖 |
 | R13 | 路由切换模型导致 prompt cache 失效 | 低 | pi 的文档明确提醒 | continuation 和 retry 保持同一模型；只在 turn 边界切换 |
-| R14 | 在项目最早期过度工程化 | 中 | 在云端前提下，基于槽位的优先级和抢占意义不大（§16.2 的 v0.4 注） | 先做 P0–P2 和呈现层；DAG 和 persona 并存往后放 |
+| R14 | 在项目最早期过度工程化 | 中 | 原型里大部分机制在规模很小时就够用（验证报告 §4） | 先做 P0–P2 和呈现层；DAG 和 persona 并存往后放 |
 
 ---
 
@@ -1390,12 +1365,12 @@ AIRI 已经依赖的 `model-bank@1.0.20260904203849` 目录：
 
 ## 附录 A：测试与数据
 
-**v0.1 的行为验证**（B1、B2 的存在性证明）：两个临时测试放在 `packages/core-agent/src/runtime/` 下，跑完即删，没有进入提交。结果是 2 个测试全部通过。
+**行为验证**（B1、B2 的存在性证明）：两个临时测试放在 `packages/core-agent/src/runtime/` 下，跑完即删，没有进入提交。结果是 2 个测试全部通过。
 
 - 测试 1：game 会话的请求没有结束时，chat 会话的请求根本没有开始。
 - 测试 2：两个 Discord 群的 append-self 通知，都出现在主人私聊的 prompt 里。
 
-**v0.3 的量化实测**（§16）：
+**量化实测**（§16）：
 
 - harness 源码：[`2026-09-30-cognitive-scheduler-bench.md`](./2026-09-30-cognitive-scheduler-bench.md)
 - 原始数据：[`data/2026-09-30-cognitive-scheduler-bench.json`](./data/2026-09-30-cognitive-scheduler-bench.json)
