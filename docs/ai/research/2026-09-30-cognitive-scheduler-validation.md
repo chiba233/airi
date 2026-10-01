@@ -346,7 +346,7 @@
 | 文件 | 用途 | 运行方式 |
 | --- | --- | --- |
 | `eval-jev.mjs`、`twostage.mjs`、`tail.mjs` | JEV 实测 | `node <文件>`。需要设置 `JEV_URL`、`JEV_MODEL`；建议使用 TypeSafe 的正式 endpoint 和 key |
-| `speech-concurrency.test.ts` | 呈现层并发 | 复制到 `packages/pipelines-audio/src/`，用 vitest 运行 |
+| `speech-concurrency.test.ts` | 多个 Agent 共用语音 | 复制到 `packages/pipelines-audio/src/`，用 vitest 运行 |
 | `catalog.mjs`、`route-cost.mjs [default\|strong]` | 全模型路由与钱包 | 读取仓库依赖的 model-bank |
 | `proto/scheduler.ts`、`proto/scheduler.test.ts` | 调度器原型 | 复制到 `packages/core-agent/src/proto/`，执行 `pnpm exec vitest run --config vitest.config.ts src/proto` |
 | `vec.mjs`、`embed.mjs` | 记忆检索 | `node <文件>`。embed 需要 `@huggingface/transformers@3` |
