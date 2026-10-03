@@ -378,11 +378,6 @@ export interface ChatOrchestratorRuntimeDeps {
    */
   decideDirectIntake?: (stimulus: Stimulus) => ChatIntakeDecision
   /**
-   * Returns a rejection message while the optional user spending limit is reached.
-   * The limit stops new runs and shows why. It never selects a cheaper model.
-   */
-  checkSpendingLimit?: () => string | undefined
-  /**
    * Runs decision recipes after the user turn is stored and before generation.
    * A silent answer ends the run as an intentional silence without a model call. Hints join the message as context.
    * `applied` names the recipes that changed the run, and the reply records them. A late or failed decision lets the run reply.
@@ -1517,10 +1512,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       intake.record(stimulus, decision)
       return { stimulusId: stimulus.id, outcome: 'ignored' }
     }
-
-    const spendingRejection = deps.checkSpendingLimit?.()
-    if (spendingRejection)
-      rejectStimulus('spending-limit', spendingRejection)
 
     // A full session queue rejects before a run exists, so waiting work stays bounded.
     if (pendingQueuedSends.filter(item => item.sessionId === sessionId).length >= getLimits().maxQueuedPerSession)

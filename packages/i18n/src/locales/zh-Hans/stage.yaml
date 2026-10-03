@@ -21,7 +21,6 @@ mobile-tools:
   hearing: 听觉
 chat:
   voice-input: 语音输入
-  spending-limit: '本小时的花费已达到上限。{time} 之后才能开始新的回复。你可以在“设置 → 记忆”中修改上限。'
   background-tasks:
     label: 后台任务
     working: 正在执行

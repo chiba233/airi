@@ -11,7 +11,6 @@ import { ref } from 'vue'
 
 import { CONTEXT_SOURCE_TOOL_NAME, CONTEXT_SOURCE_TOOLSET_PROMPT } from '../../../tools/context-source'
 import { PROPOSE_RECIPE_TOOL_NAME, PROPOSE_RECIPE_TOOLSET_PROMPT } from '../../../tools/propose-recipe'
-import { useSpendingStore } from '../../modules/spending'
 import { resolveLlmTools, toolNameFrom } from './tool-resolver'
 import { useLlmToolsetPromptsStore } from './toolset-prompts'
 
@@ -26,7 +25,6 @@ export interface LlmStreamOptions extends StreamOptions {
 
 export const useLLM = defineStore('llm', () => {
   const toolsetPrompts = useLlmToolsetPromptsStore()
-  const spending = useSpendingStore()
   toolsetPrompts.registerToolsetPrompts('spark-command', [{
     id: 'spark-command',
     title: 'Command relay',
@@ -76,12 +74,6 @@ export const useLLM = defineStore('llm', () => {
           if (event.type === 'tool-call')
             toolExecutionStarted = true
           await streamOptions.onStreamEvent?.(event)
-        },
-        // Every request counts toward the optional spending limit, including notifications and the classifier.
-        onUsage: async (usage) => {
-          if (streamOptions.providerId)
-            spending.recordUsage(streamOptions.providerId, model, usage, streamOptions.requestCorrelation?.runId)
-          await streamOptions.onUsage?.(usage)
         },
         toolsCompatibility: toolsCompatibility.value,
         contentArrayCompatibility: contentArrayCompatibility.value,

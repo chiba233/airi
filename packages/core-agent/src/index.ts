@@ -65,8 +65,6 @@ export { applyMoodAppraisal, calmMood, composeExpression, decayMood, DEFAULT_MOO
 export type { MoodDimension, MoodExpressionName, MoodProfile, MoodState, Pad, Temperament } from './runtime/mood'
 export { applyRecipeDecisions, BUILTIN_RECIPES, decisionAnswerKey, decisionRecipes, dueTriggeredRecipes, isAutoRunRecipe, matchKeywordRecipes, passGates, recipeDecisionRequest, recipeGateRequest, recipeTools, STAY_QUIET_RECIPE_ID, usableRecipes } from './runtime/recipe'
 export type { DecisionAction, DueRecipe, Recipe, RecipeDecisionOutcome, RecipeStyle, RecipeTrigger, RecipeTriggerState } from './runtime/recipe'
-export { estimateRequestCost } from './runtime/request-cost'
-export type { RequestCost } from './runtime/request-cost'
 export {
   categorizeResponse,
   createStreamingCategorizer,
@@ -79,8 +77,6 @@ export type {
 export { guardRepeatedToolCalls, RUN_LOOPING, RUN_PAST_DEADLINE, RUN_STALLED, superviseRun } from './runtime/run-supervision'
 export type { AgentRun, AgentRunState, ExecutionEnvelope } from './runtime/run-table'
 export { RunTable } from './runtime/run-table'
-export { SpendingLedger } from './runtime/spending'
-export type { SpendingEntry, SpendingLimit, SpendingState } from './runtime/spending'
 export { createStayQuietTool, STAY_QUIET_TOOL_NAME, STAY_QUIET_TOOLSET_PROMPT, stayQuietReason } from './runtime/stay-quiet'
 export { mergeLoadedSessionMessages } from './session/merge-loaded-session-messages'
 export type {

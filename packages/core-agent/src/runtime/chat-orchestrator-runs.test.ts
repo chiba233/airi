@@ -21,7 +21,7 @@ const provider: GenerationProvider = {
   generation: model => ({ protocol: 'chat-completions', webSearch: false, config: { model, baseURL: 'https://example.com/' } }),
 }
 
-function createRunHarness(options: { sessionAudience?: Audience, runAudience?: Audience, outputs?: string[], pool?: ContextMessage[], onRunChange?: (run: AgentRun) => void, limits?: Partial<ChatOrchestratorRuntimeLimits>, decideDirectIntake?: ChatOrchestratorRuntimeDeps['decideDirectIntake'], checkSpendingLimit?: ChatOrchestratorRuntimeDeps['checkSpendingLimit'], getSystemPrompt?: ChatOrchestratorRuntimeDeps['getSystemPrompt'], getHistoryDigest?: ChatOrchestratorRuntimeDeps['getHistoryDigest'], decideBeforeReply?: ChatOrchestratorRuntimeDeps['decideBeforeReply'], personaOf?: (sessionId: string) => string, leases?: LeaseTable, runs?: RunTable } = {}) {
+function createRunHarness(options: { sessionAudience?: Audience, runAudience?: Audience, outputs?: string[], pool?: ContextMessage[], onRunChange?: (run: AgentRun) => void, limits?: Partial<ChatOrchestratorRuntimeLimits>, decideDirectIntake?: ChatOrchestratorRuntimeDeps['decideDirectIntake'], getSystemPrompt?: ChatOrchestratorRuntimeDeps['getSystemPrompt'], getHistoryDigest?: ChatOrchestratorRuntimeDeps['getHistoryDigest'], decideBeforeReply?: ChatOrchestratorRuntimeDeps['decideBeforeReply'], personaOf?: (sessionId: string) => string, leases?: LeaseTable, runs?: RunTable } = {}) {
   const messages: ChatHistoryItem[] = []
   const runChanges: AgentRun[] = []
   let sessionAudience = options.sessionAudience ?? OWNER_AUDIENCE
@@ -59,7 +59,6 @@ function createRunHarness(options: { sessionAudience?: Audience, runAudience?: A
     createEnvelope: sessionId => ({ bindings: [], outputs: options.outputs ?? ['chat:owner'], audience: options.runAudience ?? OWNER_AUDIENCE, personaId: options.personaOf?.(sessionId) ?? 'airi' }),
     onRunChange: options.onRunChange ?? (run => runChanges.push(run)),
     decideDirectIntake: options.decideDirectIntake,
-    checkSpendingLimit: options.checkSpendingLimit,
     getSystemPrompt: options.getSystemPrompt,
     getHistoryDigest: options.getHistoryDigest,
     decideBeforeReply: options.decideBeforeReply,
@@ -167,21 +166,6 @@ describe('orchestrator runs', () => {
     expect(harness.stream).toHaveBeenCalledOnce()
     // The run releases the voice when it ends.
     expect(leases.holder('voice')).toBeUndefined()
-  })
-
-  // A5: a reached spending limit stops new runs visibly. It never switches to a cheaper model.
-  it('rejects input while the spending limit is reached, and records why', async () => {
-    let message: string | undefined = 'Spending limit reached until 10:00'
-    const harness = createRunHarness({ checkSpendingLimit: () => message })
-
-    await expect(harness.runtime.ingest('hello', { model: 'strong', chatProvider: provider })).rejects.toThrow('Spending limit reached until 10:00')
-    expect(harness.stream).not.toHaveBeenCalled()
-    expect(harness.runtime.getRuns()).toEqual([])
-    expect(harness.runtime.getIntakeRecords()).toMatchObject([{ outcome: 'rejected', reason: 'spending-limit' }])
-
-    message = undefined
-    await harness.runtime.ingest('hello', { model: 'strong', chatProvider: provider })
-    expect(harness.stream.mock.calls[0]?.[0]).toBe('strong')
   })
 
   // P7: identity follows the session's persona at request time. History carries none.

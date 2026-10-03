@@ -737,18 +737,6 @@ pages:
       gaming: Gaming
       artistry: Artistry
     consciousness:
-      spending:
-        title: Models and spending
-        description: The conversation model above stays your choice. A spending limit stops new work and never switches to a cheaper model.
-        spending_limit_enabled:
-          label: Spending limit
-          description: Stops new replies, notification reactions, and idle checks when the estimated cost in the last hour reaches the limit. Your message shows why it was refused.
-        spending_limit_amount:
-          label: Limit per hour
-          description: The estimate uses the provider's catalog prices and reported token usage.
-        spending_limit_currency:
-          label: Currency
-          description: Requests priced in another currency are not counted.
       description: Personality, desired model, etc.
       sections:
         section:

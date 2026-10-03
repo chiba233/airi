@@ -22,7 +22,6 @@ import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { sendAdmittedSparkCommand } from '../../mods/api/spark-command'
 import { useAiriCardStore } from '../../modules/airi-card'
 import { useConsciousnessStore } from '../../modules/consciousness'
-import { useSpendingStore } from '../../modules/spending'
 import { useTriageStore } from '../../modules/triage'
 import { useRecipesStore } from '../../recipes'
 import { useSchedulerStore } from '../../scheduler'
@@ -47,7 +46,6 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   const chatSession = useChatSessionStore()
   const scheduler = useSchedulerStore()
   const speechRuntime = useSpeechRuntimeStore()
-  const spending = useSpendingStore()
   const mood = useCharacterMoodStore()
   const airiCard = useAiriCardStore()
   const triage = useTriageStore()
@@ -132,10 +130,10 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
 
   /**
    * Moves the persona's mood after an interaction. It runs beside the work and never delays it.
-   * Background limits pause it like any other classifier request.
+   * An error burst pauses it like any other classifier request.
    */
   function appraiseMood(personaId: string, interaction: string) {
-    if (!mood.active || scheduler.errorBurst.coolingUntil() || spending.spendingPausedUntil() !== undefined)
+    if (!mood.active || scheduler.errorBurst.coolingUntil())
       return
     const card = airiCard.getCard(personaId)
     void mood.appraise(personaId, { persona: [card?.description, card?.personality].filter(Boolean).join('\n'), interaction }).catch((error) => {
@@ -365,13 +363,6 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
       return undefined
     }
 
-    // A reached spending limit pauses background work before any classifier request costs more. The work waits, never dropped.
-    const spendingPausedUntil = spending.spendingPausedUntil()
-    if (spendingPausedUntil !== undefined) {
-      await defer({ runId: nanoid(), stimulus, event, control, enqueuedAt: Date.now(), attempts: 0, maxAttempts: attentionConfig.value.maxAttempts, reason: 'spark:notify' }, { outcome: 'deferred', reason: 'spending-limit', decidedBy: 'rule', retryAt: spendingPausedUntil })
-      return undefined
-    }
-
     const ranked = stimulus
     const now = Date.now()
     const entry = { runId: nanoid(), stimulus: ranked, event, control, enqueuedAt: now, attempts: 0, maxAttempts: attentionConfig.value.maxAttempts, reason: 'spark:notify' }
@@ -441,8 +432,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
    */
   async function runRecipeTriggers(now: number) {
     triggersStartedAt ??= now
-    // A paused budget or a cooling error burst holds the triggers. They fire after the pause, and no gate is asked meanwhile.
-    if (spending.spendingPausedUntil() !== undefined || scheduler.errorBurst.coolingUntil())
+    // A cooling error burst holds the triggers. They fire after the pause, and no gate is asked meanwhile.
+    if (scheduler.errorBurst.coolingUntil())
       return
     const parentSessionId = chatSession.activeSessionId
     const lastOwnerMessageAt = chatSession.getSessionMessagesIfLoaded(parentSessionId)?.findLast(message => message.role === 'user')?.createdAt
@@ -514,8 +505,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
       return
 
     const decision = decideByPrior(next.stimulus, { now, busy: false, retryAt: next.nextRunAt })
-    // During an error burst or a reached spending limit, due work stays in the queue.
-    if (decision.outcome !== 'ignored' && (scheduler.errorBurst.coolingUntil() || spending.spendingPausedUntil() !== undefined || !requestVoice(next)))
+    // During an error burst, due work stays in the queue.
+    if (decision.outcome !== 'ignored' && (scheduler.errorBurst.coolingUntil() || !requestVoice(next)))
       return
 
     scheduledNotifies.value = scheduledNotifies.value.filter(item => item !== next)

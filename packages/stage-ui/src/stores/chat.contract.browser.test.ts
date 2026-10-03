@@ -186,7 +186,7 @@ vi.mock('./chat/session-store', () => ({
     forkSession: forkSessionMock,
     createSession: createSessionMock,
     setSessionMode: async (sessionId: string, mode: ChatSessionMeta['mode']) => {
-      sessionMetas[sessionId] = { sessionId, userId: 'local', characterId: 'default', createdAt: 1, updatedAt: 1, ...sessionMetas[sessionId], mode }
+      sessionMetas[sessionId] = { ...(sessionMetas[sessionId] ?? { sessionId, userId: 'local', characterId: 'default', createdAt: 1, updatedAt: 1 }), mode }
     },
     // Cloud sync surface used by `chat.ts performSend`. Mocked as a no-op so
     // the orchestrator contract tests do not need a real WS / cloud mapper.

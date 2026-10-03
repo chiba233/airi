@@ -699,18 +699,6 @@ pages:
       gaming: 游戏
       artistry: 绘图
     consciousness:
-      spending:
-        title: 模型与花费
-        description: 上面选择的对话模型始终由你决定。花费上限只会停止新的工作，不会换成更便宜的模型。
-        spending_limit_enabled:
-          label: 花费上限
-          description: 过去一小时的估算花费达到上限后，新的回复、通知反应和空闲检查都会停止。被拒绝的消息会显示原因。
-        spending_limit_amount:
-          label: 每小时上限
-          description: 估算依据提供商目录里的价格和返回的 token 用量。
-        spending_limit_currency:
-          label: 货币
-          description: 用其他货币计价的请求不计入。
       description: 人格设定、使用的模型等配置
       sections:
         section:
