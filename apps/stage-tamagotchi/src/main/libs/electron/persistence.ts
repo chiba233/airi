@@ -29,7 +29,6 @@ export interface CreateConfigOptions<T> {
   onReadError?: (diagnostics: ConfigDiagnostics<T>) => void
 }
 
-// Runtime snapshots belong to one physical config file, including its user-data directory.
 const persistenceMap = new Map<string, unknown>()
 const diagnosticsMap = new Map<string, ConfigDiagnostics<unknown>>()
 
@@ -62,21 +61,19 @@ export interface Config<TSchema extends PersistedSchema> {
   getDiagnostics: () => ConfigDiagnostics<InferOutput<TSchema>> | undefined
 }
 
-/** Binds cached state and asynchronous writes to the user-data directory at first use. Stores for one file share its snapshot. */
 export function createConfig<TSchema extends PersistedSchema>(
   namespace: string,
   filename: string,
   schema: TSchema,
   options?: CreateConfigOptions<InferOutput<TSchema>>,
 ): Config<TSchema> {
-  let boundPath: string | undefined
+  const key = `${namespace}:${filename}`
   const autoHeal = options?.autoHeal ?? Boolean(options?.default)
 
-  // Main-process imports can create stores before startup applies the user-data directory override.
-  const configPath = () => boundPath ??= createConfigPath(namespace, filename)
+  const configPath = () => createConfigPath(namespace, filename)
 
   const recordDiagnostics = (diagnostics: ConfigDiagnostics<InferOutput<TSchema>>) => {
-    diagnosticsMap.set(diagnostics.path, diagnostics)
+    diagnosticsMap.set(key, diagnostics)
     return diagnostics
   }
 
@@ -85,7 +82,7 @@ export function createConfig<TSchema extends PersistedSchema>(
       const path = configPath()
       await ensureConfigDirectory(path)
       const tmpPath = `${path}.${randomUUID()}.tmp`
-      await writeFile(tmpPath, JSON.stringify(persistenceMap.get(path)))
+      await writeFile(tmpPath, JSON.stringify(persistenceMap.get(key)))
       await rename(tmpPath, path)
     }
     catch (error) {
@@ -117,7 +114,7 @@ export function createConfig<TSchema extends PersistedSchema>(
         path,
         value: options?.default,
       })
-      persistenceMap.set(path, options?.default)
+      persistenceMap.set(key, options?.default)
       return diagnostics
     }
 
@@ -130,7 +127,7 @@ export function createConfig<TSchema extends PersistedSchema>(
           path,
           value: parsed.value,
         })
-        persistenceMap.set(path, parsed.value)
+        persistenceMap.set(key, parsed.value)
         return diagnostics
       }
 
@@ -143,12 +140,12 @@ export function createConfig<TSchema extends PersistedSchema>(
         value: fallback,
       })
       options?.onValidationFailure?.(diagnostics)
-      persistenceMap.set(path, fallback)
+      persistenceMap.set(key, fallback)
 
       if (autoHeal && fallback !== undefined) {
         void writeHealingConfig(fallback).then((healed) => {
           if (healed) {
-            diagnosticsMap.set(path, { ...diagnostics, healed })
+            diagnosticsMap.set(key, { ...diagnostics, healed })
           }
         })
       }
@@ -163,19 +160,19 @@ export function createConfig<TSchema extends PersistedSchema>(
         value: fallback,
       })
       options?.onReadError?.(diagnostics)
-      persistenceMap.set(path, fallback)
+      persistenceMap.set(key, fallback)
       return diagnostics
     }
   }
 
   const update = (newData: InferOutput<TSchema>) => {
-    persistenceMap.set(configPath(), newData)
+    persistenceMap.set(key, newData)
     save()
   }
 
-  const get = () => persistenceMap.get(configPath()) as InferOutput<TSchema> | undefined
+  const get = () => persistenceMap.get(key) as InferOutput<TSchema> | undefined
 
-  const getDiagnostics = () => diagnosticsMap.get(configPath()) as ConfigDiagnostics<InferOutput<TSchema>> | undefined
+  const getDiagnostics = () => diagnosticsMap.get(key) as ConfigDiagnostics<InferOutput<TSchema>> | undefined
 
   return {
     setup,
