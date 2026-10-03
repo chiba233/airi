@@ -27,10 +27,10 @@ export interface ChatAssistantMessage extends AssistantMessage {
   /** True when transport failure ended this locally preserved response before completion. */
   interrupted?: true
   /**
-   * Set on a reply that a notification or idle check started without a user turn.
-   * `runId` links the message to its intake and run trace. `source` names the event source.
+   * Set on a reply to a notice, which has no user turn.
+   * `turnId` identifies the send. `source` names what sent the notice.
    */
-  proactive?: { runId: string, source: string }
+  proactive?: { turnId: string, source: string }
   /** Names of the decision recipes that changed this reply before generation. */
   recipes?: string[]
   /** Sources returned by the provider, separate from text consumed by speech. */
@@ -97,6 +97,8 @@ export type ChatHistoryItem = (ChatMessage | ErrorMessage) & {
     description: string
     imageIndex: number
   }>
+  /** ASR results indexed by the audio parts in the original user message. */
+  audioTranscripts?: string[]
   /** Message that this message replies to in the same chat session. */
   replyToMessageId?: string
   /** Tools selected for this message. The runtime rebuilds executors from these names. */
@@ -104,6 +106,8 @@ export type ChatHistoryItem = (ChatMessage | ErrorMessage) & {
 }
 
 export interface ChatStreamEventContext {
+  /** Session ownership travels with the event across concurrent turns and renderer transports. */
+  sessionId: string
   /** Stable correlation id shared by every hook emitted for one user turn. */
   turnId: string
   message: ChatHistoryItem
@@ -112,11 +116,7 @@ export interface ChatStreamEventContext {
   input?: WebSocketEventInputs
   /** Server connection that receives the reply. An absent target keeps output inside the host. */
   outputTarget?: string
-  /** Session that owns the turn. The runtime always sets it, so concurrent turns stay apart. */
-  sessionId?: string
-  /** Run that produces the turn. */
-  runId?: string
-  /** Output channels of the run envelope. Only a run with `voice` drives speech. */
+  /** Output channels of the send. Only a send with `voice` drives speech. */
   outputs?: readonly string[]
 }
 

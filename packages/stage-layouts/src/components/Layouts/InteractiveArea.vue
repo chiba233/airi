@@ -22,7 +22,7 @@ import { useChatToolCallRerun } from '../../composables/useChatToolCallRerun'
 
 const { isReady } = useDeferredMount()
 const chatOrchestrator = useChatStore()
-const { runningSessionIds, streamingMessages, backgroundTasks, activeMode } = storeToRefs(chatOrchestrator)
+const { activeTurns, backgroundTasks, activeMode } = storeToRefs(chatOrchestrator)
 const { activeSessionId, messages } = storeToRefs(useChatSessionStore())
 const { streamingMessage } = storeToRefs(useChatStreamStore())
 const { isReceivingRemoteStream } = storeToRefs(useContextBridgeStore())
@@ -38,12 +38,12 @@ const composer = useChatComposer<ChatImageAttachment>({
   }),
 })
 const { clearReplyForMessage, selectReply } = composer
-const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+const historyMessages = computed(() => messages.value)
 const isActiveSessionSending = computed(() => (
-  runningSessionIds.value.includes(activeSessionId.value)
+  (activeTurns.value.some(turn => turn.sessionId === activeSessionId.value))
   || isReceivingRemoteStream.value
 ))
-const visibleStreamingMessage = computed(() => streamingMessages.value[activeSessionId.value] ?? streamingMessage.value)
+const visibleStreamingMessage = streamingMessage
 const { trackChatMessageDeleted } = useAnalytics()
 const { rerunToolCall } = useChatToolCallRerun()
 
@@ -95,7 +95,7 @@ async function handleRetryMessage(index: number) {
         </div>
         <ChatPersonaSwitch />
         <ChatModeBanner :name="activeMode?.name" @end="activeMode && chatOrchestrator.endHandover(activeMode.sessionId)" />
-        <ChatBackgroundTasks :tasks="backgroundTasks" @stop="runId => chatOrchestrator.cancelRun(runId)" />
+        <ChatBackgroundTasks :tasks="backgroundTasks" @stop="task => chatOrchestrator.cancelTurn(task)" />
         <ChatArea :composer="composer" :generating="isActiveSessionSending" />
       </ChatContainer>
     </div>

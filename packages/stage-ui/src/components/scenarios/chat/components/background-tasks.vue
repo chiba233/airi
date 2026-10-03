@@ -3,13 +3,13 @@ import type { BackgroundTask } from '../../../../stores/chat'
 
 import { useI18n } from 'vue-i18n'
 
-/** Background tasks beside the conversation. Each one shows its recipe and state, and can be stopped. */
+/** Background tasks beside the conversation. Each one shows its recipe and can be stopped. */
 defineProps<{
   tasks: readonly BackgroundTask[]
 }>()
 
 const emit = defineEmits<{
-  (e: 'stop', runId: string): void
+  (e: 'stop', task: BackgroundTask): void
 }>()
 
 const { t } = useI18n()
@@ -19,7 +19,7 @@ const { t } = useI18n()
   <ul v-if="tasks.length" :class="['flex flex-wrap', 'gap-1.5', 'px-2 py-1']" :aria-label="t('stage.chat.background-tasks.label')">
     <li
       v-for="task in tasks"
-      :key="task.runId"
+      :key="task.turnId"
       :class="[
         'inline-flex max-w-full items-center gap-1.5',
         'rounded-full py-1 pl-2.5 pr-1',
@@ -27,8 +27,8 @@ const { t } = useI18n()
         'bg-primary-100/80 text-primary-700 dark:bg-primary-900/70 dark:text-primary-100',
       ]"
     >
-      <span :class="[task.state === 'working' ? 'i-eos-icons:loading' : 'i-solar:hourglass-linear', 'shrink-0 text-sm']" aria-hidden="true" />
-      <span class="shrink-0 op-75">{{ t(task.state === 'working' ? 'stage.chat.background-tasks.working' : 'stage.chat.background-tasks.waiting') }}</span>
+      <span class="i-eos-icons:loading shrink-0 text-sm" aria-hidden="true" />
+      <span class="shrink-0 op-75">{{ t('stage.chat.background-tasks.working') }}</span>
       <span class="truncate font-medium">{{ task.recipeName }}</span>
       <button
         type="button"
@@ -41,7 +41,7 @@ const { t } = useI18n()
           'hover:bg-primary-200/80 dark:hover:bg-primary-800/80',
           'outline-none focus-visible:ring-2 focus-visible:ring-primary-400/60',
         ]"
-        @click="emit('stop', task.runId)"
+        @click="emit('stop', task)"
       >
         <span class="i-solar:stop-bold text-xs" aria-hidden="true" />
       </button>

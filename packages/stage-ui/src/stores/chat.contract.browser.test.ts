@@ -1,4 +1,4 @@
-import type { Conversation, StreamOptions, Turn } from '@proj-airi/core-agent'
+import type { ChatOrchestratorSessionPort, Conversation, StreamOptions, Turn } from '@proj-airi/core-agent'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { Tool } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
@@ -13,7 +13,7 @@ import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { createPinia, defineStore, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, reactive, ref } from 'vue'
+import { computed, createApp, nextTick, reactive, ref } from 'vue'
 
 import { getAnalytics } from '../libs/product-signals'
 import {
@@ -28,7 +28,6 @@ import { useContextObservabilityStore } from './devtools/context-observability'
 import { useMemoryStore } from './memory'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
 import { useRecipesStore } from './recipes'
-import { useSchedulerStore } from './scheduler'
 
 const ioTracerMocks = vi.hoisted(() => {
   const activeTurnSpan = { value: undefined as any }
@@ -88,6 +87,7 @@ const consciousnessModels = vi.hoisted(() => ({ value: [{ id: 'gpt-test', metada
 const activeSessionIdRef = ref('session-1')
 const activeProviderRef = ref('mock-provider')
 const activeModelRef = ref('gpt-test')
+const chatReadyRef = computed(() => !!activeProviderRef.value && !!activeModelRef.value)
 const streamingMessageRef = ref<StreamingAssistantMessage>({ role: 'assistant', content: '', slices: [], tool_results: [] })
 // The chat session store keeps messages in reactive state, so the mock does too.
 const sessionMessages = reactive<Record<string, ChatHistoryItem[]>>({})
@@ -161,6 +161,14 @@ vi.mock('./chat/session-store', () => ({
       sessionMessages[sessionId] ??= []
       sessionMessages[sessionId].push(message)
     },
+    commitUserMessage: (async (sessionId, message) => {
+      sessionMessages[sessionId] ??= []
+      const existing = sessionMessages[sessionId].some(item => item.id === message.id)
+      if (!existing)
+        sessionMessages[sessionId].push(message)
+      await persistSessionMessagesMock(sessionId)
+      return { status: existing ? 'existing' : 'inserted', messageId: message.id }
+    }) satisfies ChatOrchestratorSessionPort['commitUserMessage'],
     cleanupMessages: (sessionId: string) => {
       sessionMessages[sessionId] = []
     },
@@ -195,6 +203,8 @@ vi.mock('./chat/session-store', () => ({
 vi.mock('./chat/stream-store', () => ({
   useChatStreamStore: defineStore('chat-stream', () => ({
     streamingMessage: streamingMessageRef,
+    activeTurns: [],
+    updateActiveTurns: vi.fn(),
   })),
 }))
 
@@ -227,6 +237,7 @@ vi.mock('./modules/consciousness', () => ({
   useConsciousnessStore: defineStore('consciousness', () => ({
     activeModel: activeModelRef,
     activeProvider: activeProviderRef,
+    chatReady: chatReadyRef,
     providerModels: consciousnessModels.value,
     getChatProviderInstance: (providerId: string) => getChatProviderInstanceMock(providerId, {
       reasoning: useConsciousnessSettingsStore().reasoning ? 'enabled' : 'disabled',
@@ -372,6 +383,19 @@ describe('chat store contract', () => {
     sessionMessages['session-1'] = [{ role: 'system', content: 'system prompt', createdAt: 1, id: 'system' }]
   })
 
+  it('cancels a named send while session preparation is pending', async () => {
+    const loading = Promise.withResolvers<boolean>()
+    loadSessionMock.mockReturnValueOnce(loading.promise)
+    const store = useChatStore()
+    const submission = store.send({ sessionId: 'session-1', messageId: 'pending-input', text: 'Stop this request' })
+    const rejected = expect(submission).rejects.toThrow('Chat turn cancelled')
+    await store.cancelTurn({ sessionId: 'session-1', turnId: 'pending-input' })
+    loading.resolve(true)
+    await rejected
+    expect(llmStreamMock).not.toHaveBeenCalled()
+    expect(sessionMessages['session-1'].some(message => message.id === 'pending-input')).toBe(false)
+  })
+
   it('resolves the provider and rebuilds prior tools inside the serializable send action', async () => {
     const resolvedToolNames: string[][] = []
     llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: any) => {
@@ -461,12 +485,10 @@ describe('chat store contract', () => {
     expect(registeredToolsetPrompts['use-recipe']?.[0]?.content).toContain('- Game night: Starts a game when the owner wants to play.')
     expect(notice).toContain('The background task \\"Game night\\" finished.')
     expect(notice).toContain('The owner wants porridge games.')
-    expect(notice).toContain(`in session ${recipeSession}.`)
-    expect(tasksWhileWorking).toMatchObject([{ recipeName: 'Game night', state: 'working', sessionId: recipeSession }])
+    expect(tasksWhileWorking).toMatchObject([{ recipeName: 'Game night', sessionId: recipeSession }])
     expect(store.backgroundTasks).toEqual([])
     // The notice never becomes owner speech in the conversation history.
     await vi.waitFor(() => expect(sessionMessages['session-1']?.filter(message => message.role === 'user')).toHaveLength(1))
-    expect(useSchedulerStore().runs.snapshot().find(run => run.sessionId === recipeSession)).toMatchObject({ envelope: { outputs: [] }, parentRunId: expect.any(String) })
   })
 
   // A mode is its own persona with its own session, shown in the same chat window.
@@ -651,7 +673,7 @@ describe('chat store contract', () => {
       await sending
 
       expect(leaderSignal?.aborted).toBe(true)
-      expect(leaderStore.runningSessionIds).toEqual([])
+      expect(leaderStore.activeTurns).toEqual([])
     }
     finally {
       followerRuntime.dispose()
@@ -1408,13 +1430,13 @@ describe('chat store contract', () => {
       chatProvider: provider,
     })
 
-    expect(store.runningSessionIds).toEqual([])
+    expect(store.activeTurns).toEqual([])
     expect(trackFirstMessageMock).toHaveBeenCalledOnce()
     // Datetime is no longer pushed through ingestContextMessage; it is now
     // applied at message-assembly time as per-message [HH:MM] prefixes. The
     // runtime-rule and Minecraft providers are disabled in this test.
     expect(ingestContextMessageMock).not.toHaveBeenCalled()
-    expect(persistSessionMessagesMock).not.toHaveBeenCalled()
+    expect(persistSessionMessagesMock).toHaveBeenCalledWith('session-1')
     expect(hookOrder).toEqual([
       'before-compose',
       'after-compose',
@@ -1499,20 +1521,16 @@ describe('chat store contract', () => {
     // that follower's unrelated local selection.
     const store = useChatStore()
     store.$patch({
-      runningSessionIds: ['session-b'],
-      streamingMessages: {
-        'session-b': {
-          role: 'assistant',
-          content: 'authority stream',
-          slices: [],
-          tool_results: [],
-        },
-      },
+      sending: true,
+      activeSendSessionId: 'session-b',
+      activeTurns: [{ sessionId: 'session-b', turnId: 'turn-b' }],
     })
     await nextTick()
 
-    expect(store.runningSessionIds).toEqual(['session-b'])
-    expect(store.streamingMessages['session-b']?.content).toBe('authority stream')
+    expect(store.sending).toBe(true)
+    expect(store.activeSendSessionId).toBe('session-b')
+    expect(store.activeTurns).toEqual([{ sessionId: 'session-b', turnId: 'turn-b' }])
+    expect(store.$state).not.toHaveProperty('activeStreamingMessage')
   })
 
   it('does not end the owned IO turn span when external sending mirror is cleared mid-send', async () => {
@@ -1530,7 +1548,7 @@ describe('chat store contract', () => {
     })
 
     await vi.waitFor(() => {
-      expect(store.runningSessionIds).toContain('session-1')
+      expect(store.sending).toBe(true)
     })
     await vi.waitFor(() => {
       expect(ioTracerMocks.spans.some(span => span.name === IOSpanNames.InteractionTurn)).toBe(true)
@@ -1540,7 +1558,7 @@ describe('chat store contract', () => {
     if (!turnSpan)
       throw new Error('Expected the chat facade to create an interaction turn span')
 
-    store.runningSessionIds = []
+    store.sending = false
     await nextTick()
 
     expect(turnSpan.end).not.toHaveBeenCalled()
@@ -1611,7 +1629,7 @@ describe('chat store contract', () => {
 
     await useChatStore().send({ sessionId: 'session-1', text: 'Hello from Discord' })
 
-    expect(getContextsSnapshotMock).toHaveBeenCalledWith({ ids: ['session-1', 'discord:channel:a'], audience: { kind: 'subjects', subjects: ['user:owner'] } })
+    expect(getContextsSnapshotMock).toHaveBeenCalledWith({ ids: ['session-1', 'discord:channel:a'], audience: { kind: 'subjects', subjects: ['discord:channel:a:members', 'user:owner'] } })
     expect(createUserAccountContextMock).not.toHaveBeenCalled()
   })
 
@@ -1686,7 +1704,7 @@ describe('chat store contract', () => {
 
     expect(prompt).not.toContain('Private Minecraft coordinates')
     expect(createMinecraftContextMock).not.toHaveBeenCalled()
-    expect(getContextsSnapshotMock).toHaveBeenCalledWith({ ids: ['session-1', 'discord:channel:a'], audience: { kind: 'subjects', subjects: ['user:owner'] } })
+    expect(getContextsSnapshotMock).toHaveBeenCalledWith({ ids: ['session-1', 'discord:channel:a'], audience: { kind: 'subjects', subjects: ['discord:channel:a:members', 'user:owner'] } })
   })
 
   it('projects module-owned Minecraft context from the reader snapshot', async () => {

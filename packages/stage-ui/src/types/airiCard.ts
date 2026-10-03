@@ -1,6 +1,8 @@
 import type { Card } from '@proj-airi/ccc'
 import type { Temperament } from '@proj-airi/core-agent'
 
+import type { WakeWord } from '../libs/voice/wake-words'
+
 /**
  * AIRI-specific runtime configuration embedded in a character card.
  *
@@ -9,6 +11,7 @@ import type { Temperament } from '@proj-airi/core-agent'
  * losing each other's configuration.
  */
 export interface AiriExtension {
+  wakeWords?: WakeWord[]
   modules: {
     consciousness: {
       provider: string

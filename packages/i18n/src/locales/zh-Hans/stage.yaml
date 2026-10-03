@@ -20,11 +20,14 @@ mobile-tools:
   close-view: 保存并关闭视图调节
   hearing: 听觉
 chat:
+  provider-configuration:
+    title: 尚未正确配置聊天 Provider
+    description: 请先前往设置页面选择并验证一个 Provider，再发送消息。
+    action: 打开 Provider 设置
   voice-input: 语音输入
   background-tasks:
     label: 后台任务
     working: 正在执行
-    waiting: 等待中
     stop: '停止{name}'
   persona-switched: '已切换到 {name}'
   mode:

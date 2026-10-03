@@ -40,14 +40,14 @@ const chatSession = useChatSessionStore()
 const chatStream = useChatStreamStore()
 const { activeSessionId, messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
-const { runningSessionIds, streamingMessages, backgroundTasks, activeMode } = storeToRefs(chatOrchestrator)
+const { activeTurns, backgroundTasks, activeMode } = storeToRefs(chatOrchestrator)
 const { isReceivingRemoteStream } = storeToRefs(useContextBridgeStore())
-const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+const historyMessages = computed(() => messages.value)
 const isActiveSessionSending = computed(() => (
-  runningSessionIds.value.includes(activeSessionId.value)
+  (activeTurns.value.some(turn => turn.sessionId === activeSessionId.value))
   || isReceivingRemoteStream.value
 ))
-const visibleStreamingMessage = computed(() => streamingMessages.value[activeSessionId.value] ?? streamingMessage.value)
+const visibleStreamingMessage = streamingMessage
 const { trackChatMessageDeleted } = useAnalytics()
 const { rerunToolCall } = useChatToolCallRerun()
 const composer = useChatComposer<ChatImageAttachment>({
@@ -220,13 +220,14 @@ function isMobileDevice() {
   return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 }
 
-useTranscriptions(
+const { receiveTranscription } = useTranscriptions(
   {
     messageInputRef: messageInput,
     sendMessage: handleSend,
     isStageTamagotchi,
   },
 )
+defineExpose({ receiveTranscription })
 const { speechMuted, toggleSpeechMuted } = useStopSpeakingButton()
 const characterVoiceEnabled = computed({
   get: () => !speechMuted.value,
@@ -430,7 +431,7 @@ onUnmounted(() => {
           />
           <ChatPersonaSwitch />
           <ChatModeBanner :name="activeMode?.name" @end="activeMode && chatOrchestrator.endHandover(activeMode.sessionId)" />
-          <ChatBackgroundTasks :tasks="backgroundTasks" @stop="runId => chatOrchestrator.cancelRun(runId)" />
+          <ChatBackgroundTasks :tasks="backgroundTasks" @stop="task => chatOrchestrator.cancelTurn(task)" />
           <div v-if="attachments.length" :class="['flex gap-2 overflow-x-auto p-2']">
             <ChatImageAttachmentPreview v-for="(attachment, index) in attachments" :key="attachment.previewId" :file="attachment.file" @remove="removeAttachment(index)" />
           </div>

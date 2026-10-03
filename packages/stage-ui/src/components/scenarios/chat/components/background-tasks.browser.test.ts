@@ -8,9 +8,9 @@ import ChatBackgroundTasks from './background-tasks.vue'
 
 describe('chat background tasks', () => {
   // A background task is visible and stoppable from the composer.
-  it('lists each task with its state and asks to stop the chosen one', async () => {
+  it('lists each task and asks to stop the chosen one', async () => {
     const screen = await render(ChatBackgroundTasks, {
-      props: { tasks: [{ runId: 'run-1', sessionId: 'recipe-session', recipeName: 'Research', state: 'working', startedAt: 0 }] },
+      props: { tasks: [{ sessionId: 'recipe-session', turnId: 'turn-1', recipeName: 'Research' }] },
       global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })] },
     })
 
@@ -19,6 +19,6 @@ describe('chat background tasks', () => {
 
     await screen.getByRole('button', { name: 'Stop Research' }).click()
 
-    expect(screen.emitted('stop')).toEqual([['run-1']])
+    expect(screen.emitted('stop')).toEqual([[{ sessionId: 'recipe-session', turnId: 'turn-1', recipeName: 'Research' }]])
   })
 })

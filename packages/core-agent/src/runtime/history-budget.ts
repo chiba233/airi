@@ -1,6 +1,5 @@
 import type { Turn } from '../messages/types'
 import type { ChatHistoryItem } from '../types/chat'
-import type { ContextTokenCounter } from './context-budget'
 
 /** One image costs about this much in provider requests. Its encoded bytes never count as text. */
 const IMAGE_TOKEN_ESTIMATE = 1000
@@ -27,14 +26,8 @@ export function projectedTurnsSizeBound(turns: Turn[]) {
   return text.length + images * IMAGE_TOKEN_ESTIMATE
 }
 
-/** Estimates what projected turns cost in a request, including tool calls, tool results, and transcripts. */
-export function estimateTurnsTokens(turns: Turn[], countTokens: ContextTokenCounter) {
-  const { text, images } = serializeTurns(turns)
-  return countTokens(text) + images * IMAGE_TOKEN_ESTIMATE
-}
-
 /**
- * Finds the oldest message that still fits a token budget.
+ * Finds the oldest message that still fits a size budget.
  *
  * Use when:
  * - A run projects its session history, and long sessions must not grow the prompt without bound.
@@ -46,7 +39,7 @@ export function estimateTurnsTokens(turns: Turn[], countTokens: ContextTokenCoun
  * - The index of the first kept message. History is cut only before a user message, so a reply and its tool results stay together.
  *   The newest exchange always stays, even above the budget.
  */
-export function fitHistoryToBudget(items: ChatHistoryItem[], costs: number[], maxTokens: number): number {
+export function fitHistoryToBudget(items: ChatHistoryItem[], costs: number[], maxSize: number): number {
   const starts: number[] = []
   for (const [index, item] of items.entries()) {
     if (item.role === 'user' || starts.length === 0)
@@ -59,7 +52,7 @@ export function fitHistoryToBudget(items: ChatHistoryItem[], costs: number[], ma
     const start = starts[exchange]!
     const end = starts[exchange + 1] ?? items.length
     const cost = costs.slice(start, end).reduce((sum, value) => sum + value, 0)
-    if (exchange < starts.length - 1 && total + cost > maxTokens)
+    if (exchange < starts.length - 1 && total + cost > maxSize)
       break
     total += cost
     firstKept = start

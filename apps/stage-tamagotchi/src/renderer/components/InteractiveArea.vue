@@ -6,6 +6,7 @@ import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
 
 import type { ChatDraftHandover } from '../../shared/eventa'
 
+import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useChatInterruption } from '@proj-airi/stage-layouts/composables/use-chat-interruption'
 import { ChatBackgroundTasks, ChatHistory, ChatModeBanner, ChatPersonaSwitch, HearingConfigDialog, JournalPreviewModal } from '@proj-airi/stage-ui/components'
 import { ChatImageAttachmentPreview, ChatReplyPreview, useChatComposer, useChatImages } from '@proj-airi/stage-ui/components/scenarios/chat'
@@ -16,10 +17,12 @@ import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-sto
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
 import { useJournalPreviewStore } from '@proj-airi/stage-ui/stores/journal-preview'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
-import { BasicButton, BasicTextarea, GhostButton } from '@proj-airi/ui'
+import { BasicButton, BasicTextarea, Callout, GhostButton } from '@proj-airi/ui'
 import { until, useLocalStorage } from '@vueuse/core'
+import { nanoid } from 'nanoid/non-secure'
 import { storeToRefs } from 'pinia'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, shallowRef, toRaw, useTemplateRef, watch } from 'vue'
@@ -28,6 +31,7 @@ import { useI18n } from 'vue-i18n'
 import JournalToolCallBlock from './chat-tool-renderers/journal-tool-call-block.vue'
 import ChatViewportLayout from './chat-viewport-layout.vue'
 
+import { electronOpenSettings } from '../../shared/eventa'
 import { useHearingInputChannel } from '../composables/use-hearing-input-channel'
 import { artistryToolReferences, computerUseToolReferences, widgetToolReferences } from '../stores/tools'
 
@@ -79,8 +83,10 @@ const { enabled: microphoneEnabled, permissionGranted: microphonePermissionGrant
 
 const { activeSessionId, messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
-const { runningSessionIds, streamingMessages, backgroundTasks, activeMode } = storeToRefs(chatStore)
+const { activeTurns, backgroundTasks, activeMode } = storeToRefs(chatStore)
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
+const { chatReady } = storeToRefs(useConsciousnessStore())
+const openSettings = useElectronEventaInvoke(electronOpenSettings)
 
 const composer = useChatComposer<ChatImageAttachment>({
   activeSessionId,
@@ -136,7 +142,7 @@ const latestImageEntries = computed(() => {
 const hasSubmission = computed(() => !!messageInput.value.trim() || attachments.value.length > 0)
 const { showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
   sessionId: activeSessionId,
-  generating: computed(() => runningSessionIds.value.includes(activeSessionId.value)),
+  generating: computed(() => activeTurns.value.some(turn => turn.sessionId === activeSessionId.value)),
   hasSubmission,
   submit: async (hooks) => {
     await composer.submit({
@@ -147,7 +153,8 @@ const { showStopAction, stopActiveResponse, submitInterruptingResponse } = useCh
 })
 
 async function handleSend() {
-  if (!pendingImages.value)
+  // The draft stays in the composer while the setup callout is shown.
+  if (!pendingImages.value && chatReady.value)
     await submitInterruptingResponse()
 }
 
@@ -201,10 +208,10 @@ watch(sendMode, () => {
   lastEnterTime.value = 0
 })
 
-const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+const historyMessages = computed(() => messages.value)
 const assistantLabel = computed(() => activeCard.value?.name?.trim() || undefined)
-const isActiveSessionSending = computed(() => runningSessionIds.value.includes(activeSessionId.value))
-const visibleStreamingMessage = computed(() => streamingMessages.value[activeSessionId.value] ?? streamingMessage.value)
+const isActiveSessionSending = computed(() => activeTurns.value.some(turn => turn.sessionId === activeSessionId.value))
+const visibleStreamingMessage = streamingMessage
 
 async function handleDeleteMessage(payload: { message: ChatHistoryItem, index: number }) {
   const { index, message } = payload
@@ -318,7 +325,7 @@ async function restoreDraft(draft: ChatDraftHandover): Promise<boolean> {
     data: attachment.data,
     mimeType: attachment.mimeType,
     file: fileFromBase64(attachment),
-    previewId: crypto.randomUUID(),
+    previewId: nanoid(),
   })))
   return true
 }
@@ -395,6 +402,25 @@ defineExpose({
       >
         <div :class="[composerFolded ? 'i-solar:alt-arrow-up-linear' : 'i-solar:alt-arrow-down-linear', 'size-4']" />
       </button>
+      <Callout
+        v-if="!chatReady"
+        class="mx-2 mb-1"
+        theme="orange"
+        :label="t('stage.chat.provider-configuration.title')"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="min-w-48 flex-1 text-sm">
+            {{ t('stage.chat.provider-configuration.description') }}
+          </span>
+          <BasicButton
+            size="unset"
+            class="rounded-lg bg-primary-500 px-3 py-1 text-sm text-white"
+            @click="openSettings({ route: '/settings/providers' })"
+          >
+            {{ t('stage.chat.provider-configuration.action') }}
+          </BasicButton>
+        </div>
+      </Callout>
       <div
         ref="message-composer"
         :class="[
@@ -420,7 +446,7 @@ defineExpose({
         >
           <ChatPersonaSwitch />
           <ChatModeBanner :name="activeMode?.name" @end="activeMode && chatStore.endHandover(activeMode.sessionId)" />
-          <ChatBackgroundTasks :tasks="backgroundTasks" @stop="runId => chatStore.cancelRun(runId)" />
+          <ChatBackgroundTasks :tasks="backgroundTasks" @stop="task => chatStore.cancelTurn(task)" />
           <!-- Journal Preview Chips -->
           <div v-if="latestImageEntries.length > 0" class="flex gap-2 overflow-x-auto px-2 py-1 scrollbar-none">
             <div

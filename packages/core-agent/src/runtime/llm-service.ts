@@ -86,6 +86,9 @@ async function streamOnce({
   const request = currentProvider.generation(currentModel)
   const supportedTools = supportsTools(currentModel, request, options)
   const contentArraySupported = supportsContentArray(currentModel, request, options)
+  if (request.protocol === 'chat-completions' && !contentArraySupported && options?.prepareStringContent)
+    conversation = await options.prepareStringContent(conversation)
+  options?.abortSignal?.throwIfAborted()
   const builtinTools = supportedTools && !initialStep
     ? await (builtinToolsResolver?.(model, chatProvider) ?? Promise.resolve([]))
     : []
@@ -321,15 +324,14 @@ export async function streamFrom(input: StreamFromOptions): Promise<void> {
 }
 
 // Runtime auto-degrade: patterns that indicate the model/provider does not support tool calling.
+// An error about one tool is not in this list. An invalid schema or a failed tool call
+// (`invalid_function_parameters`, `tool_use_failed`) does not show that the model has no tool support.
 const TOOLS_RELATED_ERROR_PATTERNS: RegExp[] = [
   /does not support tools/i, // Ollama
   /no endpoints found that support tool use/i, // OpenRouter
-  /invalid schema for function/i, // OpenAI-compatible
-  /invalid.?function.?parameters/i, // OpenAI-compatible
   /functions are not supported/i, // Azure AI Foundry
   /unrecognized request argument.+tools/i, // Azure AI Foundry
   /tool use with function calling is unsupported/i, // Google Generative AI
-  /tool_use_failed/i, // Groq
   /does not support function.?calling/i, // Anthropic
   /tools?\s+(is|are)\s+not\s+supported/i, // Cloudflare Workers AI
 ]

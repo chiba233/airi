@@ -27,29 +27,24 @@ export {
   unionAudiences,
 } from './runtime/audience'
 export type {
-  ChatIngestResult,
-  ChatIntakeDecision,
+  ChatAttachment,
   ChatOrchestratorLifecycleRecord,
   ChatOrchestratorLLMPort,
   ChatOrchestratorPromptProjection,
   ChatOrchestratorRuntime,
   ChatOrchestratorRuntimeDeps,
-  ChatOrchestratorRuntimeLimits,
   ChatOrchestratorRuntimeState,
   ChatOrchestratorSendOptions,
   ChatOrchestratorSessionPort,
   QueuedSendSnapshot,
 } from './runtime/chat-orchestrator-runtime'
-export { createChatOrchestratorRuntime, decideDirectInput, MAX_DERIVATION_DEPTH, MAX_DERIVED_CHILDREN } from './runtime/chat-orchestrator-runtime'
+export { createChatOrchestratorRuntime } from './runtime/chat-orchestrator-runtime'
 export type { ChoiceAnswer, ChoiceQuestion, Classifier, ClassifierAnswer, ClassifierQuestion, ClassifierRequest, NoulAnswer, NoulQuestion, ScoreAnswer, ScoreQuestion } from './runtime/classifier'
 export { askWithin, CLASSIFIER_DEADLINE_MS, CLASSIFIER_TRUST_THRESHOLD, noulConfidence } from './runtime/classifier'
 export { CONTEXT_SOURCE_TOKEN_LIMIT, limitContextText, loadContextTokenCounter } from './runtime/context-budget'
 export type { ContextTokenCounter } from './runtime/context-budget'
 export type { ContextHistoryEntry, ContextIngestResult, ContextReader, ContextRegistry, ContextRegistryState } from './runtime/context-registry'
 export { createContextRegistry, projectContextRegistryState } from './runtime/context-registry'
-export { ERROR_BURST_COOLDOWN_MS, ERROR_BURST_LIMIT, ERROR_BURST_WINDOW_MS, ErrorBurstBreaker } from './runtime/error-burst'
-export type { IntakeDecider, IntakeDecision, IntakeOutcome, IntakeRecord, Stimulus, StimulusOrigin } from './runtime/intake'
-export { decideByPrior, deferDelayMs, IntakeLog, salienceFromUrgency } from './runtime/intake'
 export { useLlmmarkerParser } from './runtime/llm-marker-parser'
 export {
   isContentArrayRelatedError,
@@ -70,9 +65,7 @@ export type {
   CategorizedSegment,
   ResponseCategory,
 } from './runtime/response-categoriser'
-export { guardRepeatedToolCalls, RUN_LOOPING, RUN_PAST_DEADLINE, RUN_STALLED, superviseRun } from './runtime/run-supervision'
-export type { AgentRun, AgentRunState, ExecutionEnvelope } from './runtime/run-table'
-export { RunTable } from './runtime/run-table'
+export { RUN_STALLED, superviseRun } from './runtime/run-supervision'
 export { mergeLoadedSessionMessages } from './session/merge-loaded-session-messages'
 export type {
   ChatAssistantMessage,
