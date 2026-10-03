@@ -63,7 +63,7 @@ export {
 } from './runtime/llm-service'
 export { applyMoodAppraisal, calmMood, composeExpression, decayMood, DEFAULT_MOOD_PROFILE, DEFAULT_TEMPERAMENT, describeMood, EXPRESSION_ANCHORS, MOOD_DIMENSION_VECTORS, moodExpression, moodIntensitiesFromAnswers, moodIntensity, moodPad, moodProfileFromTemperament, moodProsody, moodQuestions, padFromIntensities, presentFeelings } from './runtime/mood'
 export type { MoodDimension, MoodExpressionName, MoodProfile, MoodState, Pad, Temperament } from './runtime/mood'
-export { applyRecipeDecisions, BUILTIN_RECIPES, decisionAnswerKey, decisionRecipes, dueTriggeredRecipes, isAutoRunRecipe, matchKeywordRecipes, passGates, recipeDecisionRequest, recipeGateRequest, recipeTools, STAY_QUIET_RECIPE_ID, usableRecipes } from './runtime/recipe'
+export { applyRecipeDecisions, decisionAnswerKey, decisionRecipes, dueTriggeredRecipes, isAutoRunRecipe, matchKeywordRecipes, passGates, recipeDecisionRequest, recipeGateRequest, recipeTools, usableRecipes } from './runtime/recipe'
 export type { DecisionAction, DueRecipe, Recipe, RecipeDecisionOutcome, RecipeStyle, RecipeTrigger, RecipeTriggerState } from './runtime/recipe'
 export {
   categorizeResponse,
@@ -77,7 +77,6 @@ export type {
 export { guardRepeatedToolCalls, RUN_LOOPING, RUN_PAST_DEADLINE, RUN_STALLED, superviseRun } from './runtime/run-supervision'
 export type { AgentRun, AgentRunState, ExecutionEnvelope } from './runtime/run-table'
 export { RunTable } from './runtime/run-table'
-export { createStayQuietTool, STAY_QUIET_TOOL_NAME, STAY_QUIET_TOOLSET_PROMPT, stayQuietReason } from './runtime/stay-quiet'
 export { mergeLoadedSessionMessages } from './session/merge-loaded-session-messages'
 export type {
   ChatAssistantMessage,

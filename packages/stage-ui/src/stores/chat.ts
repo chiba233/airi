@@ -8,7 +8,7 @@ import type { ChatHistoryItem, ChatToolReference, StreamingAssistantMessage } fr
 import type { ToolCallRerunPayload } from './tool-call-rerun'
 
 import { errorMessageFrom } from '@moeru/std'
-import { audienceFromBindings, audienceIncludes, createChatOrchestratorRuntime, createStayQuietTool, matchKeywordRecipes, OWNER_AUDIENCE, renderConversationPreview, STAY_QUIET_RECIPE_ID, unionAudiences } from '@proj-airi/core-agent'
+import { audienceFromBindings, audienceIncludes, createChatOrchestratorRuntime, matchKeywordRecipes, OWNER_AUDIENCE, renderConversationPreview, unionAudiences } from '@proj-airi/core-agent'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
@@ -646,7 +646,6 @@ export const useChatStore = defineStore('chat', () => {
       ...await sourceTools(),
       ...(ownerOnly ? await createUseRecipeTool({ recipes: () => recipes.recipes, start: (recipe, task) => startRecipe(recipe, { parentSessionId: sessionId, parentRunId: runId, task }) }) : []),
       // Reading without replying is a recipe. The owner can turn it off.
-      ...(recipes.isUsable(STAY_QUIET_RECIPE_ID) ? [createStayQuietTool()] : []),
       // The owner can turn proposals off. Every proposal waits for the owner's approval.
       ...(ownerOnly && recipes.proposalsEnabled ? await createProposeRecipeTool({ propose: recipe => recipes.propose(recipe) }) : []),
     ]

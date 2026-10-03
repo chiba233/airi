@@ -2,7 +2,7 @@ import type { Recipe } from './recipe'
 
 import { describe, expect, it } from 'vitest'
 
-import { applyRecipeDecisions, BUILTIN_RECIPES, decisionAnswerKey, decisionRecipes, dueTriggeredRecipes, isAutoRunRecipe, matchKeywordRecipes, passGates, recipeDecisionRequest, recipeGateRequest, recipeTools, STAY_QUIET_RECIPE_ID, usableRecipes } from './recipe'
+import { applyRecipeDecisions, decisionAnswerKey, decisionRecipes, dueTriggeredRecipes, matchKeywordRecipes, passGates, recipeDecisionRequest, recipeGateRequest, recipeTools, usableRecipes } from './recipe'
 
 function recipe(overrides: Partial<Recipe>): Recipe {
   return {
@@ -19,12 +19,6 @@ function recipe(overrides: Partial<Recipe>): Recipe {
 }
 
 describe('recipes', () => {
-  // Every auto-run recipe is the owner's own. No built-in recipe runs on a trigger.
-  it('offers only read-without-replying as a built-in recipe', () => {
-    expect(usableRecipes(BUILTIN_RECIPES).map(entry => entry.id)).toEqual([STAY_QUIET_RECIPE_ID])
-    expect(BUILTIN_RECIPES.filter(isAutoRunRecipe)).toEqual([])
-  })
-
   // A recipe never grants itself a capability. It only narrows the tools the host granted.
   it('keeps only the tools that the host granted', () => {
     expect(recipeTools(recipe({}), ['launch_game'])).toEqual(['launch_game'])

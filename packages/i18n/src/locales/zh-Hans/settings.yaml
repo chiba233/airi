@@ -827,7 +827,6 @@ pages:
         title: 配方
         empty: 还没有配方。
         sources:
-          builtin: 内置
           user: 你创建的
           model: 模型提议的
         pending: 等待你批准。批准一次之后，使用时不再询问。
@@ -924,11 +923,6 @@ pages:
           decision: 快速判断
           run: 独立运行
           mcp: MCP 工具
-        builtin:
-          stay-quiet:
-            name: 已读不回
-            description: 角色读完消息后，如果没什么要说的，可以选择不回复。
-      description: 长期记忆
       title: 长期记忆
       sessions:
         title: 聊天会话

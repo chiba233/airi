@@ -28,7 +28,6 @@ import { useLlmmarkerParser } from './llm-marker-parser'
 import { categorizeResponse, createStreamingCategorizer } from './response-categoriser'
 import { guardRepeatedToolCalls, RUN_LOOPING, superviseRun } from './run-supervision'
 import { RunTable } from './run-table'
-import { STAY_QUIET_TOOL_NAME, stayQuietReason } from './stay-quiet'
 
 const REASONING_UI_FLUSH_CHUNK_SIZE = 24
 
@@ -1053,7 +1052,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       await hooks.emitBeforeSendHooks(sendingMessage, streamingMessageContext)
 
       let fullText = ''
-      // Set when the model calls the silence tool. Silence needs this explicit choice, so an empty reply alone stays a normal result.
+      // Set when a decision recipe chooses silence before generation.
       let quiet: { reason?: string } | undefined
       const headers = (options.providerConfig?.headers || {}) as Record<string, string>
 
@@ -1138,8 +1137,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
                 updateStream(sessionId, buildingMessage)
                 break
               case 'tool-call':
-                if (event.toolName === STAY_QUIET_TOOL_NAME)
-                  quiet = { reason: stayQuietReason(event.args) }
                 toolCallQueue.enqueue({
                   type: 'tool-call',
                   toolCall: event,
@@ -1224,8 +1221,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         console.error('Assistant response observer failed:', error)
       }
 
-      // A chosen silence with no spoken text leaves no assistant message and no reply hooks.
-      const silent = quiet !== undefined && !fullText.trim()
+      // A reply with no text and no tool call is silence. It leaves no assistant message and no reply hooks.
+      const silent = !fullText.trim() && !buildingMessage.slices.some(slice => slice.type === 'tool-call')
       if (silent)
         run.onSilent(quiet?.reason)
       if (!silent && !shouldAbort() && (buildingMessage.slices.length > 0 || generatedTurn?.rounds.length)) {

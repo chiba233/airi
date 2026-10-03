@@ -38,7 +38,7 @@ export type RecipeTrigger
     | { kind: 'idle', afterMinutes: number }
     | { kind: 'mood', feeling: MoodDimension, above: number }
 
-/** One recipe. The user, a built-in default, or a model proposal can supply it. */
+/** One recipe. The user or a model proposal supplies it. */
 export interface Recipe {
   id: string
   name: string
@@ -46,7 +46,7 @@ export interface Recipe {
   description: string
   style: RecipeStyle
   triggers: RecipeTrigger[]
-  source: 'builtin' | 'user' | 'model'
+  source: 'user' | 'model'
   enabled: boolean
   /**
    * The user authorized this recipe once. Later uses need no prompt.
@@ -64,23 +64,6 @@ export interface Recipe {
    */
   gate?: string
 }
-
-/** Id of the built-in recipe that lets a run read a message and stay quiet. */
-export const STAY_QUIET_RECIPE_ID = 'builtin:stay-quiet'
-
-/** Recipes that every host starts with. The user can turn them off. */
-export const BUILTIN_RECIPES: readonly Recipe[] = [
-  {
-    id: STAY_QUIET_RECIPE_ID,
-    name: 'Read without replying',
-    description: 'Lets the character read a message and choose not to answer when nothing needs saying.',
-    style: { kind: 'instructions', instructions: '', tools: ['builtIn_stayQuiet'] },
-    triggers: [],
-    source: 'builtin',
-    enabled: true,
-    approved: true,
-  },
-]
 
 /** Recipes that may run now: enabled and authorized. */
 export function usableRecipes(recipes: readonly Recipe[]) {

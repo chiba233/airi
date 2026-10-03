@@ -20,7 +20,7 @@ function recipe(overrides: Partial<Recipe>): Recipe {
   }
 }
 
-const quiet = recipe({ id: 'builtin:stay-quiet', name: 'Read without replying', style: { kind: 'instructions', instructions: '' }, source: 'builtin' })
+const empty = recipe({ id: 'user:draft', name: 'Draft', style: { kind: 'instructions', instructions: '' } })
 const decision = recipe({ id: 'user:ack', name: 'Acknowledgements', style: { kind: 'decision', question: { type: 'noul', instructions: 'Only thanks?', criteria: { true: 'Yes', false: 'No' } }, actions: {} } })
 
 async function call(recipes: Recipe[], input: unknown, start: StartRecipe = async () => ({ status: 'started' })) {
@@ -50,20 +50,20 @@ describe('recipe tool', () => {
   it('tells the model when a recipe waits, is off, or does not exist, without starting it', async () => {
     expect(resolveRecipeUse([recipe({ approved: false, enabled: false })], 'Research')).toEqual({ status: 'pending', name: 'Research', usable: [] })
     expect(resolveRecipeUse([recipe({ enabled: false })], 'Research')).toEqual({ status: 'disabled', name: 'Research', usable: [] })
-    const { result, start } = await call([recipe({}), quiet], { name: 'Read without replying', task: '' })
-    expect(result).toEqual({ status: 'unknown', name: 'Read without replying', usable: ['Research'] })
+    const { result, start } = await call([recipe({}), empty], { name: 'Draft', task: '' })
+    expect(result).toEqual({ status: 'unknown', name: 'Draft', usable: ['Research'] })
     expect(start).not.toHaveBeenCalled()
   })
 
   it('lists startable recipes by purpose only, with decisions, auto-run recipes, and waiting proposals as the current state', () => {
     const greet = recipe({ id: 'user:greet', name: 'Check in', style: { kind: 'instructions', instructions: 'Greet softly.' }, triggers: [{ kind: 'idle', afterMinutes: 30 }] })
     const mode = recipe({ id: 'user:adhd', name: 'i-have-adhd', description: 'ADHD-friendly answers.', handover: true })
-    const prompt = describeRecipesForRun([recipe({}), mode, quiet, decision, greet, recipe({ id: 'model:new', name: 'Summaries', approved: false, enabled: false })])
+    const prompt = describeRecipesForRun([recipe({}), mode, empty, decision, greet, recipe({ id: 'model:new', name: 'Summaries', approved: false, enabled: false })])
 
     expect(prompt).toContain('- Research: Researches a purchase.')
     expect(prompt).toContain('- i-have-adhd (handover): ADHD-friendly answers.')
     expect(prompt).not.toContain('Compare three options')
-    expect(prompt).not.toContain('Read without replying')
+    expect(prompt).not.toContain('Draft')
     expect(prompt).toContain('run by themselves before you reply: Acknowledgements.')
     expect(prompt).toContain('start on their own when their trigger fires, for example after a silence: Check in.')
     expect(prompt).toContain('wait for the owner\'s approval, so you cannot start them yet: Summaries.')

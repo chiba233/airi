@@ -72,18 +72,7 @@ function startEditing(id: string) {
   editingId.value = id
 }
 
-function builtinKey(recipe: Recipe) {
-  return `${KEY}.builtin.${recipe.id.replace('builtin:', '')}`
-}
-
-/** Built-in recipes keep their definition in code, so their text comes from the locale. */
-function nameOf(recipe: Recipe) {
-  return recipe.source === 'builtin' ? t(`${builtinKey(recipe)}.name`) : recipe.name
-}
-
 function descriptionOf(recipe: Recipe) {
-  if (recipe.source === 'builtin')
-    return t(`${builtinKey(recipe)}.description`)
   if (recipe.description)
     return recipe.description
   return recipe.style.kind === 'decision' ? recipe.style.question.instructions : ''
@@ -119,10 +108,8 @@ function grantsOf(recipe: Recipe) {
   return parts
 }
 
-/** Only owner and model recipes in the styles that the form writes can change. */
+/** Only recipes in the styles that the form writes can change. */
 function editableType(recipe: Recipe): EditableRecipeType | undefined {
-  if (recipe.source === 'builtin')
-    return undefined
   return recipe.style.kind === 'instructions' || recipe.style.kind === 'decision' ? recipe.style.kind : undefined
 }
 
@@ -221,20 +208,20 @@ function removeRecipe(id: string) {
             <span :class="[isAutoRunTab ? AUTO_RUN_ICON : STYLE_ICONS[recipe.style.kind], 'text-lg']" />
           </span>
           <div :class="['min-w-0 flex-1', 'flex flex-col']">
-            <span :class="['truncate', 'text-sm font-medium']">{{ nameOf(recipe) }}</span>
+            <span :class="['truncate', 'text-sm font-medium']">{{ recipe.name }}</span>
             <span :class="['truncate', 'text-xs', 'text-neutral-400 dark:text-neutral-500']">{{ metaOf(recipe) }}</span>
             <span v-if="descriptionOf(recipe)" :class="['truncate', 'text-xs', 'text-neutral-500 dark:text-neutral-400']" :title="descriptionOf(recipe)">
               {{ descriptionOf(recipe) }}
             </span>
           </div>
-          <template v-if="recipe.source !== 'builtin' && editingId !== recipe.id">
+          <template v-if="editingId !== recipe.id">
             <GhostButton v-if="editableType(recipe)" size="sm" icon="i-solar:pen-2-linear" :aria-label="t(`${KEY}.edit`)" :title="t(`${KEY}.edit`)" @click="startEditing(recipe.id)" />
             <GhostButton size="sm" icon="i-solar:trash-bin-minimalistic-linear" :aria-label="t(`${KEY}.remove`)" :title="t(`${KEY}.remove`)" @click="removeRecipe(recipe.id)" />
           </template>
           <Checkbox
             :model-value="recipe.enabled"
             :disabled="!recipe.approved"
-            :aria-label="t(`${KEY}.enabled`, { name: nameOf(recipe) })"
+            :aria-label="t(`${KEY}.enabled`, { name: recipe.name })"
             @update:model-value="value => recipesStore.setEnabled(recipe.id, value)"
           />
         </div>

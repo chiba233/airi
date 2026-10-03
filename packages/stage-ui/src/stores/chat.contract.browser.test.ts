@@ -8,7 +8,7 @@ import type { ChatSessionMeta } from '../types/chat-session'
 import type { LlmStreamOptions } from './ai/chat-llm/llm'
 
 import { errorMessageFrom } from '@moeru/std'
-import { audienceFromBindings, STAY_QUIET_RECIPE_ID } from '@proj-airi/core-agent'
+import { audienceFromBindings } from '@proj-airi/core-agent'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { createPinia, defineStore, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
@@ -290,9 +290,8 @@ function storedToolImageMessage(): ChatHistoryItem {
 describe('chat store contract', () => {
   beforeEach(() => {
     cardPrompt.value = 'system prompt'
-    // Recipes persist in local storage. Each test starts from the built-in recipes.
+    // Recipes persist in local storage. Each test starts without any.
     localStorage.removeItem('recipes/custom')
-    localStorage.removeItem('recipes/builtin-enabled')
     localStorage.removeItem('recipes/proposals-enabled')
     localStorage.removeItem('memory/entries')
     setActivePinia(createPinia())
@@ -400,24 +399,9 @@ describe('chat store contract', () => {
     expect(() => structuredClone(result)).not.toThrow()
     // Each request also receives the source reader, authorized by its own session.
     expect(resolvedToolNames).toEqual([
-      ['stage_widgets', 'builtIn_readContextSource', 'builtIn_readMemory', 'builtIn_writeMemory', 'builtIn_forgetMemory', 'builtIn_useRecipe', 'builtIn_stayQuiet', 'builtIn_proposeRecipe'],
-      ['stage_widgets', 'builtIn_readContextSource', 'builtIn_readMemory', 'builtIn_writeMemory', 'builtIn_forgetMemory', 'builtIn_useRecipe', 'builtIn_stayQuiet', 'builtIn_proposeRecipe'],
+      ['stage_widgets', 'builtIn_readContextSource', 'builtIn_readMemory', 'builtIn_writeMemory', 'builtIn_forgetMemory', 'builtIn_useRecipe', 'builtIn_proposeRecipe'],
+      ['stage_widgets', 'builtIn_readContextSource', 'builtIn_readMemory', 'builtIn_writeMemory', 'builtIn_forgetMemory', 'builtIn_useRecipe', 'builtIn_proposeRecipe'],
     ])
-  })
-
-  // Reading without replying is a recipe. A run offers the silence tool only while the owner keeps it on.
-  it('drops the silence tool when the stay-quiet recipe is off', async () => {
-    const toolNames: string[][] = []
-    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: any) => {
-      const tools = typeof options.tools === 'function' ? await options.tools() : options.tools
-      toolNames.push(tools.map((tool: Tool) => tool.function.name))
-      await options.onStreamEvent({ type: 'finish' })
-    })
-    useRecipesStore().setEnabled(STAY_QUIET_RECIPE_ID, false)
-
-    await useChatStore().send({ sessionId: 'session-1', text: 'hello' })
-
-    expect(toolNames).toEqual([['builtIn_readContextSource', 'builtIn_readMemory', 'builtIn_writeMemory', 'builtIn_forgetMemory', 'builtIn_useRecipe', 'builtIn_proposeRecipe']])
   })
 
   // The owner's switch decides whether the character can propose recipes at all.

@@ -1,6 +1,6 @@
 import type { Recipe } from '@proj-airi/core-agent'
 
-import { BUILTIN_RECIPES, isAutoRunRecipe, usableRecipes } from '@proj-airi/core-agent'
+import { isAutoRunRecipe, usableRecipes } from '@proj-airi/core-agent'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -9,7 +9,7 @@ import { computed } from 'vue'
 export type { DecisionAction, Recipe } from '@proj-airi/core-agent'
 
 /**
- * Recipes the owner keeps: built-in recipes with their switches, the owner's own, and model proposals.
+ * Recipes the owner keeps: the owner's own and model proposals.
  *
  * Use when:
  * - A run decides which recipes it may use, or Settings > Memory lists them.
@@ -18,18 +18,14 @@ export type { DecisionAction, Recipe } from '@proj-airi/core-agent'
  * - Only the owner approves a recipe. A model proposal stays unapproved until then.
  *
  * Returns:
- * - All recipes, the usable ones, and actions that change them. Built-in recipes keep their definition, and only their switch is stored.
+ * - All recipes, the usable ones, and actions that change them.
  */
 export const useRecipesStore = defineStore('recipes', () => {
   const custom = useLocalStorageManualReset<Recipe[]>('recipes/custom', [])
-  const builtinEnabled = useLocalStorageManualReset<Record<string, boolean>>('recipes/builtin-enabled', {})
   /** Whether the character may propose recipes in conversation. Every proposal still waits for approval. */
   const proposalsEnabled = useLocalStorageManualReset<boolean>('recipes/proposals-enabled', true)
 
-  const recipes = computed<Recipe[]>(() => [
-    ...BUILTIN_RECIPES.map(recipe => ({ ...recipe, enabled: builtinEnabled.value[recipe.id] ?? recipe.enabled })),
-    ...custom.value,
-  ])
+  const recipes = computed<Recipe[]>(() => custom.value)
   const usable = computed(() => usableRecipes(recipes.value))
   /** Recipes that a conversation uses: no trigger, or keyword triggers only. */
   const conversation = computed(() => recipes.value.filter(recipe => !isAutoRunRecipe(recipe)))
@@ -42,10 +38,6 @@ export const useRecipesStore = defineStore('recipes', () => {
   }
 
   function setEnabled(id: string, enabled: boolean) {
-    if (BUILTIN_RECIPES.some(recipe => recipe.id === id)) {
-      builtinEnabled.value = { ...builtinEnabled.value, [id]: enabled }
-      return
-    }
     custom.value = custom.value.map(recipe => recipe.id === id ? { ...recipe, enabled } : recipe)
   }
 
@@ -67,8 +59,7 @@ export const useRecipesStore = defineStore('recipes', () => {
   }
 
   /**
-   * Changes what an owner or model recipe does. Its source, switch, and approval stay.
-   * Built-in recipes keep their definition, so only their switch changes.
+   * Changes what a recipe does. Its source, switch, and approval stay.
    */
   function update(id: string, fields: Pick<Recipe, 'name' | 'description' | 'style' | 'triggers' | 'gate' | 'handover'>) {
     custom.value = custom.value.map(recipe => recipe.id === id ? { ...recipe, ...fields } : recipe)
@@ -80,7 +71,6 @@ export const useRecipesStore = defineStore('recipes', () => {
 
   function resetState() {
     custom.reset()
-    builtinEnabled.reset()
     proposalsEnabled.reset()
   }
 

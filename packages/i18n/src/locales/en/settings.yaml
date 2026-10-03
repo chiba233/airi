@@ -875,7 +875,6 @@ pages:
         title: Recipes
         empty: No recipes yet.
         sources:
-          builtin: Built-in
           user: Yours
           model: Proposed by the model
         pending: Waiting for your approval. After one approval, it runs without asking again.
@@ -972,11 +971,6 @@ pages:
           decision: Quick decision
           run: Separate run
           mcp: MCP tool
-        builtin:
-          stay-quiet:
-            name: Read without replying
-            description: Lets the character read a message and choose not to answer when nothing needs saying.
-      description: Long-term memory specific settings and management
       title: Long-Term Memory
       sessions:
         title: Chat sessions

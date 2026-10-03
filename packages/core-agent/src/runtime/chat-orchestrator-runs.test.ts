@@ -15,7 +15,6 @@ import { audienceFromBindings, intersectAudiences, OWNER_AUDIENCE, PUBLIC_AUDIEN
 import { createChatOrchestratorRuntime, MAX_DERIVATION_DEPTH, MAX_DERIVED_CHILDREN } from './chat-orchestrator-runtime'
 import { LeaseTable } from './lease-table'
 import { RunTable } from './run-table'
-import { STAY_QUIET_TOOL_NAME } from './stay-quiet'
 
 const provider: GenerationProvider = {
   generation: model => ({ protocol: 'chat-completions', webSearch: false, config: { model, baseURL: 'https://example.com/' } }),
@@ -389,31 +388,29 @@ describe('orchestrator runs', () => {
     expect(harness.runtime.getRuns()[0]?.state).toBe('expired')
   })
 
-  // T2: an admitted run can complete silently, as a success with no assistant message.
-  it('records a chosen silence as a successful run without an assistant message', async () => {
+  // T2: an empty reply is silence: a successful run without an assistant message.
+  it('records an empty reply as a silent run without an assistant message', async () => {
     const harness = createRunHarness()
     const replies: unknown[] = []
     harness.runtime.hooks.onAssistantMessage(async (message) => {
       replies.push(message)
     })
     harness.stream.mockImplementationOnce(async (_model, _provider, _conversation, streamOptions) => {
-      await streamOptions?.onStreamEvent?.({ type: 'tool-call', toolCallId: 'quiet', toolCallType: 'function', toolName: STAY_QUIET_TOOL_NAME, args: '{"reason":"They are talking to each other"}' })
       await streamOptions?.onGeneratedTurn?.({ type: 'assistant', id: 'turn', status: 'completed', rounds: [] } satisfies AssistantTurn)
       await streamOptions?.onStreamEvent?.({ type: 'finish' })
     })
 
     await harness.runtime.ingest('hello', { model: 'test', chatProvider: provider })
 
-    expect(harness.runtime.getRuns()[0]).toMatchObject({ state: 'done', silent: { reason: 'They are talking to each other' } })
+    expect(harness.runtime.getRuns()[0]).toMatchObject({ state: 'done', silent: {} })
     expect(harness.messages.map(message => message.role)).toEqual(['user'])
     expect(replies).toEqual([])
   })
 
-  it('keeps a reply that follows the silence tool, because spoken text wins', async () => {
+  it('keeps a reply that only called a tool', async () => {
     const harness = createRunHarness()
     harness.stream.mockImplementationOnce(async (_model, _provider, _conversation, streamOptions) => {
-      await streamOptions?.onStreamEvent?.({ type: 'tool-call', toolCallId: 'quiet', toolCallType: 'function', toolName: STAY_QUIET_TOOL_NAME, args: '{}' })
-      await streamOptions?.onStreamEvent?.({ type: 'text-delta', text: 'Actually, one thing.' })
+      await streamOptions?.onStreamEvent?.({ type: 'tool-call', toolCallId: 'look', toolCallType: 'function', toolName: 'look', args: '{}' })
       await streamOptions?.onStreamEvent?.({ type: 'finish' })
     })
 
@@ -424,19 +421,15 @@ describe('orchestrator runs', () => {
   })
 
   // T8: a failure or an empty reply without the explicit choice never counts as silence.
-  it('never records silence for a failed provider or an empty reply', async () => {
+  it('never records silence for a failed provider', async () => {
     const harness = createRunHarness()
-    harness.stream.mockImplementationOnce(async (_model, _provider, _conversation, streamOptions) => {
-      await streamOptions?.onStreamEvent?.({ type: 'finish' })
-    })
     harness.stream.mockImplementationOnce(async () => {
       throw new Error('provider down')
     })
 
-    await harness.runtime.ingest('first', { model: 'test', chatProvider: provider })
-    await expect(harness.runtime.ingest('second', { model: 'test', chatProvider: provider })).rejects.toThrow('provider down')
+    await expect(harness.runtime.ingest('hello', { model: 'test', chatProvider: provider })).rejects.toThrow('provider down')
 
-    expect(harness.runtime.getRuns().map(run => [run.state, run.silent])).toEqual([['done', undefined], ['blocked', undefined]])
+    expect(harness.runtime.getRuns().map(run => [run.state, run.silent])).toEqual([['blocked', undefined]])
   })
 
   // T6: the next turn reads the speech that the listener heard, not the full generated reply.

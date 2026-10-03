@@ -1,4 +1,3 @@
-import { STAY_QUIET_RECIPE_ID } from '@proj-airi/core-agent'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -7,15 +6,6 @@ import { useRecipesStore } from './recipes'
 describe('recipes store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-  })
-
-  it('starts with read-without-replying usable, and lets the owner turn it off', () => {
-    const recipes = useRecipesStore()
-    expect(recipes.isUsable(STAY_QUIET_RECIPE_ID)).toBe(true)
-
-    recipes.setEnabled(STAY_QUIET_RECIPE_ID, false)
-
-    expect(recipes.isUsable(STAY_QUIET_RECIPE_ID)).toBe(false)
   })
 
   // A model proposal waits for the owner. After one approval it runs without asking again.
@@ -34,7 +24,7 @@ describe('recipes store', () => {
     const recipes = useRecipesStore()
     recipes.add({ name: 'Music', description: 'Plays music.', style: { kind: 'mcp', server: 'music', tool: 'play' }, triggers: [], enabled: true })
 
-    expect(recipes.usable.map(recipe => recipe.name)).toEqual(['Read without replying', 'Music'])
+    expect(recipes.usable.map(recipe => recipe.name)).toEqual(['Music'])
   })
 
   // Editing changes what a recipe does, never who wrote it or whether the owner approved it.
