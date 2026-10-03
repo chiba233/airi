@@ -1,18 +1,12 @@
 <script setup lang="ts">
 import { useCharacterMoodStore } from '@proj-airi/stage-ui/stores/character/mood'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
-import { useSettingsSessionLifecycle } from '@proj-airi/stage-ui/stores/settings'
-import { Button, FieldInput } from '@proj-airi/ui'
+import { Button } from '@proj-airi/ui'
 import { useNow } from '@vueuse/core'
-import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { positiveNumberModel } from '../../../libs/number-model'
-
 const { t } = useI18n()
-const { dormantAfterMinutes } = storeToRefs(useSettingsSessionLifecycle())
-const dormantAfterMinutesModel = positiveNumberModel(dormantAfterMinutes)
 
 const mood = useCharacterMoodStore()
 const cards = useAiriCardStore()
@@ -62,23 +56,6 @@ const feelings = computed(() => {
       <p v-else :class="['text-sm', 'text-neutral-500 dark:text-neutral-400']">
         {{ t('settings.pages.modules.memory-short-term.mood.inactive') }}
       </p>
-    </section>
-
-    <section :class="['rounded-lg', 'bg-neutral-50 dark:bg-neutral-800', 'p-4', 'flex flex-col', 'gap-4']">
-      <div :class="['flex flex-col', 'gap-1']">
-        <h2 :class="['text-lg font-medium']">
-          {{ t('settings.pages.modules.memory-short-term.sessions.title') }}
-        </h2>
-        <p :class="['text-sm', 'text-neutral-500 dark:text-neutral-400']">
-          {{ t('settings.pages.modules.memory-short-term.sessions.description') }}
-        </p>
-      </div>
-      <FieldInput
-        v-model="dormantAfterMinutesModel"
-        type="number"
-        :label="t('settings.pages.modules.memory-short-term.sessions.dormant_after.label')"
-        :description="t('settings.pages.modules.memory-short-term.sessions.dormant_after.description')"
-      />
     </section>
   </div>
 </template>

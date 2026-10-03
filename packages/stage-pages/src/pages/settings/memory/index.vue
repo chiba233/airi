@@ -3,7 +3,7 @@ import type { TriageBackend } from '@proj-airi/stage-ui/stores/settings'
 
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { MAX_TRIAGE_THRESHOLD, MIN_TRIAGE_THRESHOLD, useSettingsRunLimits, useSettingsTriage } from '@proj-airi/stage-ui/stores/settings'
+import { MAX_TRIAGE_THRESHOLD, MIN_TRIAGE_THRESHOLD, useSettingsTriage } from '@proj-airi/stage-ui/stores/settings'
 import { FieldCombobox, FieldInput, FieldRange, FieldSelect } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, watch } from 'vue'
@@ -11,10 +11,7 @@ import { useI18n } from 'vue-i18n'
 
 import SettingsAdvanced from '../../../components/settings-advanced.vue'
 
-import { positiveNumberModel } from '../../../libs/number-model'
-
 const { t } = useI18n()
-const { maxConcurrentRuns, maxQueuedPerSession, stallTimeoutSeconds, runDeadlineMinutes } = storeToRefs(useSettingsRunLimits())
 const { backend, threshold, decisionsApiKey, decisionsEndpoint, decisionsModel, llmProvider, llmModel } = storeToRefs(useSettingsTriage())
 const providersStore = useProviderStore()
 const { configuredChatProvidersMetadata, isLoadingModels } = storeToRefs(providersStore)
@@ -43,11 +40,6 @@ watch(llmProvider, async (provider) => {
     return
   llmModel.value = providersStore.getDefaultModelForProvider(provider) ?? modelOptions.value[0]?.value ?? llmModel.value
 }, { immediate: true })
-
-const maxConcurrentRunsModel = positiveNumberModel(maxConcurrentRuns, { integer: true })
-const maxQueuedPerSessionModel = positiveNumberModel(maxQueuedPerSession, { integer: true })
-const stallTimeoutSecondsModel = positiveNumberModel(stallTimeoutSeconds, { integer: true })
-const runDeadlineMinutesModel = positiveNumberModel(runDeadlineMinutes, { integer: true })
 </script>
 
 <template>
@@ -121,38 +113,6 @@ const runDeadlineMinutesModel = positiveNumberModel(runDeadlineMinutes, { intege
           :max="MAX_TRIAGE_THRESHOLD"
           :step="0.01"
           :format-value="value => value.toFixed(2)"
-        />
-      </SettingsAdvanced>
-    </section>
-
-    <section :class="['rounded-lg', 'bg-neutral-50 dark:bg-neutral-800', 'p-4']">
-      <SettingsAdvanced
-        :title="t('settings.pages.memory.runs.title')"
-        :description="t('settings.pages.memory.runs.description')"
-      >
-        <FieldInput
-          v-model="maxConcurrentRunsModel"
-          type="number"
-          :label="t('settings.pages.memory.runs.max_concurrent.label')"
-          :description="t('settings.pages.memory.runs.max_concurrent.description')"
-        />
-        <FieldInput
-          v-model="maxQueuedPerSessionModel"
-          type="number"
-          :label="t('settings.pages.memory.runs.max_queued.label')"
-          :description="t('settings.pages.memory.runs.max_queued.description')"
-        />
-        <FieldInput
-          v-model="stallTimeoutSecondsModel"
-          type="number"
-          :label="t('settings.pages.memory.runs.stall_timeout.label')"
-          :description="t('settings.pages.memory.runs.stall_timeout.description')"
-        />
-        <FieldInput
-          v-model="runDeadlineMinutesModel"
-          type="number"
-          :label="t('settings.pages.memory.runs.deadline.label')"
-          :description="t('settings.pages.memory.runs.deadline.description')"
         />
       </SettingsAdvanced>
     </section>

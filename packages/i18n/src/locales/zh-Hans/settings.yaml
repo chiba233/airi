@@ -483,21 +483,6 @@ pages:
       description: 很少需要修改的设置，默认值适合大多数情况。
     description: 存放记忆的地方，以及策略
     title: 记忆体
-    runs:
-      title: 正在生成的回复
-      description: 同时生成回复的限制。限制不会切换模型，也不会悄悄跳过回复。超出限制的工作会等待，或者带着提示失败。
-      max_concurrent:
-        label: 同时生成的回复数
-        description: 所有聊天里可以同时进行的回复和通知反应数量。设为 1 时一次只做一件事。角色仍然一次只说一条回复。
-      max_queued:
-        label: 每个聊天会话的等待消息数
-        description: 一个聊天会话里可以排队等待的消息数量。超出后新的消息会被拒绝。
-      stall_timeout:
-        label: 停滞超时（秒）
-        description: 回复在这段时间内没有收到任何内容时会停止，并报告失败。
-      deadline:
-        label: 回复时限（分钟）
-        description: 回复运行超过这段时间时会停止，并报告失败。
     triage:
       title: 注意力
       description: 可选的快速分类器，用来回答快速判断配方、运行前判断和心情评估的问题。不设置时，这些功能不会启用，也不会有额外的调用。
@@ -924,21 +909,9 @@ pages:
           run: 独立运行
           mcp: MCP 工具
       title: 长期记忆
-      sessions:
-        title: 聊天会话
-        description: 休眠的会话在更长一段时间后会归档。归档的会话不会再为它的外部场景继续。记住的事实会在之后的更新中加入。
-        retire_after:
-          label: 归档前的休眠时间（天）
-          description: 聊天会话在休眠状态下经过多少天后归档。你仍然可以打开并继续它。
     memory-short-term:
       description: 短期记忆
       title: 短期记忆
-      sessions:
-        title: 聊天会话
-        description: 聊天会话安静一段时间后会进入休眠。休眠的会话仍可以继续。
-        dormant_after:
-          label: 休眠前的空闲时间（分钟）
-          description: 聊天会话在没有活动的情况下经过多少分钟后进入休眠。
       mood:
         title: 当前心情
         description: 角色此刻的心情，通常是几种感受的混合。它会在对话和紧急事件之后变化，再按角色卡上的性格倾向逐渐回落。
