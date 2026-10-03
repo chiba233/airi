@@ -43,14 +43,11 @@ import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } fr
 import { bindSpeakingStateToPlaybackManager } from '../../libs/speech/playback-speaking-state'
 import { createStageTtsSession } from '../../libs/speech/tts-session'
 import { getSpeechBusContext, speechOutputGetPlaybackState } from '../../services/speech/bus'
-import { createSpeechDeviceForwarder } from '../../services/speech/device-forwarding'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
 import { useCharacterMoodStore } from '../../stores/character/mood'
 import { useChatStore } from '../../stores/chat'
-import { useModsServerChannelStore } from '../../stores/mods/api/channel-server'
-import { useSpeechDeviceStore } from '../../stores/mods/api/speech-device'
 import { useAiriCardStore } from '../../stores/modules'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
@@ -177,10 +174,7 @@ function onVRMInteract(target: VrmInteractionTarget) {
   vrmViewerRef.value?.setExpression(getVrmInteractionExpression(target), 1)
 }
 
-const chatStore = useChatStore()
-const modsServerChannel = useModsServerChannelStore()
-const speechDevices = useSpeechDeviceStore()
-const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd, onAssistantMessage } = chatStore
+const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatStore()
 const chatHookCleanups: Array<() => void> = []
 // WORKAROUND: clear previous handlers on unmount to avoid duplicate calls when this component remounts.
 //             We keep per-hook disposers instead of wiping the global chat hooks to play nicely with
@@ -494,11 +488,6 @@ function resolveStageVoiceType(): 'official_selected' | 'custom_configured' {
   return activeSpeechProvider.value === OFFICIAL_SPEECH_PROVIDER_ID || activeSpeechProvider.value === OFFICIAL_SPEECH_STREAMING_PROVIDER_ID ? 'official_selected' : 'custom_configured'
 }
 
-// A run that speaks to a voice device sends the same segments there, in local playback order.
-const deviceForwarder = createSpeechDeviceForwarder((connectionId, event) => {
-  modsServerChannel.send({ ...event, route: { destinations: [{ type: 'connection', connections: [connectionId] }] } })
-})
-
 const speechPipeline = createSpeechPipeline<AudioBuffer>({
   tts: async (request, signal) => {
     if (signal.aborted)
@@ -618,8 +607,6 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
       if (signal.aborted || !res || res.byteLength === 0)
         return null
 
-      // A device turn keeps the encoded bytes, because decoding consumes them.
-      deviceForwarder.capture(request.turnId, request.segmentId, res)
       const audioBuffer = await audioContext.decodeAudioData(res)
       return audioBuffer
     }
@@ -643,22 +630,9 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
   playback: playbackManager,
 })
 
-chatHookCleanups.push(deviceForwarder.attach(speechPipeline))
-
 initIOTracer()
 useIOTraceBridge(speechPipeline)
-// Device speech uses the segment pipeline. A streaming transport or muted speech never reaches a device.
-watch([activeSpeechProvider, speechMuted], ([provider, muted]) => {
-  speechRuntimeStore.setForwardsToDevices(!muted && resolveSpeechTransport(provider) !== 'bidirectional-ws')
-}, { immediate: true })
-
-void speechRuntimeStore.registerHost(speechPipeline, {
-  recordDeliveredSpeech: (sessionId, messageId, deliveredSpeech) => {
-    void chatStore.recordDeliveredSpeech(sessionId, messageId, deliveredSpeech).catch((error) => {
-      console.warn('[Stage] Failed to record delivered speech:', error)
-    })
-  },
-})
+void speechRuntimeStore.registerHost(speechPipeline)
 
 speechPipeline.on('onSpecial', (segment) => {
   if (segment.special) {
@@ -935,23 +909,9 @@ function holdsVoice(context: { outputs?: readonly string[] }) {
 // Code and markup stay in the chat. Speech reads only the speakable text.
 let speakableText = createSpeakableTextFilter()
 
-// An interrupted reply records the speech that was heard on its message.
-chatHookCleanups.push(onAssistantMessage(async (message, _text, context) => {
-  if (holdsVoice(context) && message.id)
-    speechRuntimeStore.attachVoiceTurnMessage(context.turnId, message.id)
-}))
-
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   if (!holdsVoice(context))
     return
-
-  const deviceBinding = context.outputs?.find(output => output.startsWith('voice-device:'))?.slice('voice-device:'.length)
-  const device = deviceBinding ? speechDevices.forBindings([deviceBinding]) : undefined
-  if (device)
-    deviceForwarder.startTurn(context.turnId, device)
-
-  if (context.sessionId)
-    speechRuntimeStore.startVoiceTurn(context.turnId, context.sessionId)
 
   playbackManager.stopAll('new-message')
   resetAssistantSpeechSurface('new-message')
@@ -1008,9 +968,6 @@ chatHookCleanups.push(onAssistantResponseEnd(async (_message, context) => {
   if (!holdsVoice(context))
     return
   currentSession?.end()
-  // The run ends after this hook. Its speech keeps the voice until playback ends.
-  if (context.runId)
-    speechRuntimeStore.holdPlayback(context.turnId, context.runId)
   // Streaming sessions null-out via the onDone hook; segmenter sessions
   // stay around until the next `onBeforeMessageComposed` cancels them
   // (the segmenter pipeline's IntentHandle.end is idempotent and

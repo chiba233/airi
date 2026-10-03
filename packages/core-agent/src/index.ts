@@ -43,8 +43,6 @@ export type {
 export { createChatOrchestratorRuntime, decideDirectInput, MAX_DERIVATION_DEPTH, MAX_DERIVED_CHILDREN } from './runtime/chat-orchestrator-runtime'
 export type { ChoiceAnswer, ChoiceQuestion, Classifier, ClassifierAnswer, ClassifierQuestion, ClassifierRequest, NoulAnswer, NoulQuestion, ScoreAnswer, ScoreQuestion } from './runtime/classifier'
 export { askWithin, CLASSIFIER_DEADLINE_MS, CLASSIFIER_TRUST_THRESHOLD, noulConfidence } from './runtime/classifier'
-export type { CommandAdmission, CommandDestination, CommandRejection } from './runtime/command-admission'
-export { admitCommand, moduleControlResource } from './runtime/command-admission'
 export { CONTEXT_SOURCE_TOKEN_LIMIT, limitContextText, loadContextTokenCounter } from './runtime/context-budget'
 export type { ContextTokenCounter } from './runtime/context-budget'
 export type { ContextHistoryEntry, ContextIngestResult, ContextReader, ContextRegistry, ContextRegistryState } from './runtime/context-registry'
@@ -52,8 +50,6 @@ export { createContextRegistry, projectContextRegistryState } from './runtime/co
 export { ERROR_BURST_COOLDOWN_MS, ERROR_BURST_LIMIT, ERROR_BURST_WINDOW_MS, ErrorBurstBreaker } from './runtime/error-burst'
 export type { IntakeDecider, IntakeDecision, IntakeOutcome, IntakeRecord, Stimulus, StimulusOrigin } from './runtime/intake'
 export { decideByPrior, deferDelayMs, IntakeLog, salienceFromUrgency } from './runtime/intake'
-export type { Lease, LeaseCandidate, LeaseGrant } from './runtime/lease-table'
-export { compareLeaseCandidates, LEASE_CANDIDATE_TTL_MS, LeaseTable } from './runtime/lease-table'
 export { useLlmmarkerParser } from './runtime/llm-marker-parser'
 export {
   isContentArrayRelatedError,

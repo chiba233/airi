@@ -4,7 +4,6 @@ import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { DescribeToolImage } from './tool-images'
 
 import { streamFrom as coreStreamFrom, isContentArrayRelatedError, isToolRelatedError, modelKey } from '@proj-airi/core-agent'
-import { SPARK_COMMAND_TOOLSET_PROMPT } from '@proj-airi/core-agent/agents/spark-command'
 import { listModels } from '@xsai/model'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -25,12 +24,6 @@ export interface LlmStreamOptions extends StreamOptions {
 
 export const useLLM = defineStore('llm', () => {
   const toolsetPrompts = useLlmToolsetPromptsStore()
-  toolsetPrompts.registerToolsetPrompts('spark-command', [{
-    id: 'spark-command',
-    title: 'Command relay',
-    requiredTools: ['builtIn_emitSparkCommand'],
-    content: SPARK_COMMAND_TOOLSET_PROMPT,
-  }])
   toolsetPrompts.registerToolsetPrompts('propose-recipe', [{
     id: 'propose-recipe',
     title: 'Recipes',
@@ -50,7 +43,7 @@ export const useLLM = defineStore('llm', () => {
     const key = modelKey(model, chatProvider.generation(model))
     let toolExecutionStarted = false
     const { tools: customTools, describeToolImage, ...streamOptions } = options ?? {}
-    const builtinToolsResolver = () => resolveLlmTools({ customTools, describeImage: describeToolImage, runId: streamOptions.requestCorrelation?.runId })
+    const builtinToolsResolver = () => resolveLlmTools({ customTools, describeImage: describeToolImage })
 
     const runStream = () => coreStreamFrom({
       model,

@@ -1,5 +1,3 @@
-import type { IntentBehavior } from '@proj-airi/pipelines-audio'
-
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
 
@@ -10,7 +8,7 @@ export interface SpeechIntentStartPayload {
   streamId: string
   ownerId?: string
   priority?: number
-  behavior?: IntentBehavior
+  behavior?: 'queue' | 'interrupt' | 'replace'
 }
 
 export interface SpeechIntentTokenPayload {

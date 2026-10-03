@@ -16,14 +16,12 @@ import { createQueue } from '@proj-airi/stream-kit'
 
 import { chatMessagesToTurns } from '../messages/chat-completions'
 import { formatTimePrefix } from '../messages/datetime-prefix'
-import { deliveredSpeechText, deliveredSpeechTurn } from '../messages/delivered-speech'
 import { renderConversationPreview } from '../messages/preview'
 import { createChatHooks } from './agent-hooks'
 import { audienceIncludes, intersectAudiences, OWNER_AUDIENCE } from './audience'
 import { loadContextTokenCounter } from './context-budget'
 import { estimateTurnsTokens, fitHistoryToBudget, projectedTurnsSizeBound } from './history-budget'
 import { IntakeLog, salienceFromUrgency } from './intake'
-import { LeaseTable } from './lease-table'
 import { useLlmmarkerParser } from './llm-marker-parser'
 import { categorizeResponse, createStreamingCategorizer } from './response-categoriser'
 import { guardRepeatedToolCalls, RUN_LOOPING, superviseRun } from './run-supervision'
@@ -366,8 +364,6 @@ export interface ChatOrchestratorRuntimeDeps {
   runs?: RunTable
   /** Intake trace shared with other stimulus sources in the host. @default a trace owned by this runtime */
   intake?: IntakeLog
-  /** Exclusive resources shared with other run owners in the host. A send with the `voice` output holds `voice`. @default leases owned by this runtime */
-  leases?: LeaseTable
   /** Called whenever a run is admitted or changes state. */
   onRunChange?: (run: AgentRun) => void
   /**
@@ -589,13 +585,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
   const runningSends = new Map<string, QueuedSend>()
   const runs = deps.runs ?? new RunTable({ now })
   const intake = deps.intake ?? new IntakeLog({ now })
-  const leases = deps.leases ?? new LeaseTable({ now })
   if (deps.onRunChange)
     runs.subscribe(deps.onRunChange)
   if (deps.onIntakeRecord)
     intake.subscribe(deps.onIntakeRecord)
-  // Another owner can release the voice or end a run, so waiting sends get another chance.
-  leases.subscribe(() => queueMicrotask(pump))
+  // Another owner can end a run, so waiting sends get another chance.
   runs.subscribe(() => queueMicrotask(pump))
 
   function emitStateChange() {
@@ -710,14 +704,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const nowTs = now()
     const messagesById = new Map(history.flatMap(message => message.id ? [[message.id, message] as const] : []))
     return history.map((message, historyIndex): Turn[] => {
-      // An interrupted voice reply reaches the next prompt as the speech that was heard.
-      const delivered = message.role === 'assistant' ? message.deliveredSpeech : undefined
-      if (message.role === 'assistant' && message.generationTranscript) {
-        const turn = structuredClone(unwrapMessage(message.generationTranscript))
-        return [delivered === undefined ? turn : deliveredSpeechTurn(turn, delivered)]
-      }
-      if (message.role === 'assistant' && delivered !== undefined)
-        return chatMessagesToTurns([{ role: 'assistant', content: deliveredSpeechText(delivered) }], message.id ?? `history-${historyIndex}`)
+      if (message.role === 'assistant' && message.generationTranscript)
+        return [structuredClone(unwrapMessage(message.generationTranscript))]
       const source = message.role === 'user'
         ? prependTextToContent(unwrapMessage(message), `${formatTimePrefix(getStablePromptTimestamp(message, nowTs))}${formatReplyPromptPrefix(message.replyToMessageId, messagesById)}`)
         : unwrapMessage(message)
@@ -1395,7 +1383,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
   /**
    * Starts waiting sends in admission order. A session runs one send at a time, and the run count stays within the limit.
-   * The voice is an exclusive lease. A send with the voice output waits until it ranks first among the voice candidates of every run owner.
    * A slow session therefore holds only its own slot.
    */
   function pump() {
@@ -1406,16 +1393,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         break
       if (runningSends.has(queuedSend.sessionId))
         continue
-      // Only candidates for the voice compare. The lease line ranks them by salience tier and waiting time.
-      // The owner's own input interrupts playback that outlived its run. A generating run keeps the voice.
-      if (queuedSend.envelope.outputs.includes('voice') && !leases.acquire('voice', queuedSend.runId, { salience: queuedSend.salience, waitingSince: queuedSend.queuedAt, interrupt: queuedSend.direct }).granted)
-        continue
       pendingQueuedSends = pendingQueuedSends.filter(item => item !== queuedSend)
       runningSends.set(queuedSend.sessionId, queuedSend)
       void execute(queuedSend).then((result) => {
-        // Free the slot and leases before the caller resumes, so a settled send never appears to run.
+        // Free the slot before the caller resumes, so a settled send never appears to run.
         runningSends.delete(queuedSend.sessionId)
-        leases.releaseAll(queuedSend.runId)
         if (queuedSend.cancellation?.rollback && queuedSend.writtenMessageIds.length)
           deps.session.removeSessionMessages?.(queuedSend.sessionId, queuedSend.writtenMessageIds)
         pump()
@@ -1567,7 +1549,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         continue
 
       queued.cancelled = true
-      leases.withdraw('voice', queued.runId)
       runs.transition(queued.runId, 'dropped')
       queued.deferred.reject(new Error('Chat session was reset before send could start'))
     }
@@ -1590,7 +1571,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     if (waiting) {
       pendingQueuedSends = pendingQueuedSends.filter(item => item !== waiting)
       waiting.cancelled = true
-      leases.withdraw('voice', runId)
       runs.transition(runId, 'dropped')
       waiting.deferred.reject(new Error('Run was cancelled before it started'))
       emitStateChange()

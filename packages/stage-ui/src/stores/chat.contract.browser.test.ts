@@ -26,11 +26,9 @@ import { useChatStore } from './chat'
 import { CHAT_FORMAT_RULES } from './chat/prompt-recipe'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useMemoryStore } from './memory'
-import { useSpeechDeviceStore } from './mods/api/speech-device'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
 import { useRecipesStore } from './recipes'
 import { useSchedulerStore } from './scheduler'
-import { useSpeechRuntimeStore } from './speech-runtime'
 
 const ioTracerMocks = vi.hoisted(() => {
   const activeTurnSpan = { value: undefined as any }
@@ -1659,51 +1657,6 @@ describe('chat store contract', () => {
     expect(outputs).toEqual([['chat:owner', 'voice'], ['chat:owner', 'connection:module-connection']])
   })
 
-  // The voice reaches every active device. A private reply must not be spoken where channel members hear it.
-  it('speaks only for the device scene while a voice device is active', async () => {
-    sessionMetas['voice-session'] = { sessionId: 'voice-session', userId: 'local', characterId: 'default', bindings: ['discord:channel:voice-a'], createdAt: 1, updatedAt: 1 }
-    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
-      await options.onStreamEvent?.({ type: 'finish' })
-    })
-    useSpeechDeviceStore().devices = [{ binding: 'discord:channel:voice-a', connectionId: 'discord-connection' }]
-    useSpeechRuntimeStore().setForwardsToDevices(true)
-    const outputs: Array<readonly string[] | undefined> = []
-    const store = useChatStore()
-    store.onBeforeSend(async (_message, context) => {
-      outputs.push(context.outputs)
-    })
-
-    await store.send({ sessionId: 'session-1', text: 'Private question' })
-    await store.send({ sessionId: 'voice-session', text: 'Spoken question', outputTarget: 'discord-connection' })
-
-    expect(outputs).toEqual([['chat:owner'], ['chat:owner', 'voice', 'voice-device:discord:channel:voice-a']])
-  })
-
-  // ROOT CAUSE:
-  //
-  // A device turn dropped its text reply, but streaming speech never reached the device forwarder.
-  // The scene then got neither voice nor text.
-  //
-  // We fixed this by routing the voice to a device only while the speech host can forward it.
-  it('answers a device scene in text while the speech path cannot reach devices', async () => {
-    sessionMetas['voice-session'] = { sessionId: 'voice-session', userId: 'local', characterId: 'default', bindings: ['discord:channel:voice-a'], createdAt: 1, updatedAt: 1 }
-    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
-      await options.onStreamEvent?.({ type: 'finish' })
-    })
-    useSpeechDeviceStore().devices = [{ binding: 'discord:channel:voice-a', connectionId: 'discord-connection' }]
-    useSpeechRuntimeStore().setForwardsToDevices(false)
-    const outputs: Array<readonly string[] | undefined> = []
-    const store = useChatStore()
-    store.onBeforeSend(async (_message, context) => {
-      outputs.push(context.outputs)
-    })
-
-    await store.send({ sessionId: 'session-1', text: 'Private question' })
-    await store.send({ sessionId: 'voice-session', text: 'Spoken question', outputTarget: 'discord-connection' })
-
-    expect(outputs).toEqual([['chat:owner', 'voice'], ['chat:owner', 'connection:discord-connection']])
-  })
-
   // ROOT CAUSE:
   // The frontend Minecraft provider bypassed reader filtering through the request-only instruction path.
   // Minecraft now publishes its own context. Chat reads it through the filtered observation pool.
@@ -1788,28 +1741,6 @@ describe('chat store contract', () => {
     expect(prompts[1]).not.toContain('system:user-account')
     expect(prompts[1]).not.toContain('Alice')
     expect(prompts[1]).not.toContain('/settings/account')
-  })
-
-  // T6: the next turn reads the delivered speech of an interrupted voice reply.
-  it('records delivered speech so the next prompt reads only what was heard', async () => {
-    const prompts: string[] = []
-    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, messages: Conversation, options: StreamOptions) => {
-      prompts.push(JSON.stringify(messages))
-      await options.onStreamEvent?.({ type: 'text-delta', text: prompts.length === 1 ? 'Heard part. Unheard part.' : 'ok' })
-      await options.onStreamEvent?.({ type: 'finish' })
-    })
-    const store = useChatStore()
-    const sessionId = activeSessionIdRef.value
-    await store.ingest('tell me', { model: 'gpt-test', chatProvider: provider })
-    const reply = sessionMessages[sessionId]?.find(message => message.role === 'assistant')
-
-    await store.recordDeliveredSpeech(sessionId, reply!.id!, 'Heard part. ')
-    await store.recordDeliveredSpeech(sessionId, 'missing-message', 'ignored')
-    await store.ingest('go on', { model: 'gpt-test', chatProvider: provider })
-
-    expect(sessionMessages[sessionId]?.find(message => message.id === reply!.id)).toMatchObject({ content: 'Heard part. Unheard part.', deliveredSpeech: 'Heard part. ' })
-    expect(prompts[1]).toContain('Heard part.…')
-    expect(prompts[1]).not.toContain('Unheard part')
   })
 
   it('rejects cancelled queued sends before they start', async () => {

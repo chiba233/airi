@@ -16,7 +16,6 @@
   },
   "scripts": {
     "start": "tsx --env-file=.env --env-file-if-exists=.env.local src/index.ts",
-    "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

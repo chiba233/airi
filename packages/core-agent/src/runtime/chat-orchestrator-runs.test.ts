@@ -13,14 +13,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { audienceFromBindings, intersectAudiences, OWNER_AUDIENCE, PUBLIC_AUDIENCE } from './audience'
 import { createChatOrchestratorRuntime, MAX_DERIVATION_DEPTH, MAX_DERIVED_CHILDREN } from './chat-orchestrator-runtime'
-import { LeaseTable } from './lease-table'
 import { RunTable } from './run-table'
 
 const provider: GenerationProvider = {
   generation: model => ({ protocol: 'chat-completions', webSearch: false, config: { model, baseURL: 'https://example.com/' } }),
 }
 
-function createRunHarness(options: { sessionAudience?: Audience, runAudience?: Audience, outputs?: string[], pool?: ContextMessage[], onRunChange?: (run: AgentRun) => void, limits?: Partial<ChatOrchestratorRuntimeLimits>, decideDirectIntake?: ChatOrchestratorRuntimeDeps['decideDirectIntake'], getSystemPrompt?: ChatOrchestratorRuntimeDeps['getSystemPrompt'], getHistoryDigest?: ChatOrchestratorRuntimeDeps['getHistoryDigest'], decideBeforeReply?: ChatOrchestratorRuntimeDeps['decideBeforeReply'], personaOf?: (sessionId: string) => string, leases?: LeaseTable, runs?: RunTable } = {}) {
+function createRunHarness(options: { sessionAudience?: Audience, runAudience?: Audience, outputs?: string[], pool?: ContextMessage[], onRunChange?: (run: AgentRun) => void, limits?: Partial<ChatOrchestratorRuntimeLimits>, decideDirectIntake?: ChatOrchestratorRuntimeDeps['decideDirectIntake'], getSystemPrompt?: ChatOrchestratorRuntimeDeps['getSystemPrompt'], getHistoryDigest?: ChatOrchestratorRuntimeDeps['getHistoryDigest'], decideBeforeReply?: ChatOrchestratorRuntimeDeps['decideBeforeReply'], personaOf?: (sessionId: string) => string, runs?: RunTable } = {}) {
   const messages: ChatHistoryItem[] = []
   const runChanges: AgentRun[] = []
   let sessionAudience = options.sessionAudience ?? OWNER_AUDIENCE
@@ -61,7 +60,6 @@ function createRunHarness(options: { sessionAudience?: Audience, runAudience?: A
     getSystemPrompt: options.getSystemPrompt,
     getHistoryDigest: options.getHistoryDigest,
     decideBeforeReply: options.decideBeforeReply,
-    leases: options.leases,
     runs: options.runs,
   })
   const narrowSession = (audience: Audience) => {
@@ -146,25 +144,6 @@ describe('orchestrator runs', () => {
       { outcome: 'ignored', reason: 'empty-input', decidedBy: 'rule' },
       { outcome: 'admitted', reason: 'direct-input', decidedBy: 'rule', runId: result.runId },
     ])
-  })
-
-  // ROOT CAUSE:
-  // Voice exclusivity lived inside the chat runtime, so notification reactions spoke over a conversation run.
-  it('waits for the voice lease that another run owner holds', async () => {
-    const leases = new LeaseTable()
-    leases.acquire('voice', 'notification-run', { salience: 0.9 })
-    const harness = createRunHarness({ leases, outputs: ['chat:owner', 'voice'] })
-
-    const send = harness.runtime.ingest('hello', { model: 'test', chatProvider: provider })
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(harness.stream).not.toHaveBeenCalled()
-    expect(harness.runtime.getRuns()[0]?.state).toBe('queued')
-
-    leases.release('voice', 'notification-run')
-    await send
-    expect(harness.stream).toHaveBeenCalledOnce()
-    // The run releases the voice when it ends.
-    expect(leases.holder('voice')).toBeUndefined()
   })
 
   // P7: identity follows the session's persona at request time. History carries none.
@@ -286,36 +265,6 @@ describe('orchestrator runs', () => {
     consoleWarn.mockRestore()
   })
 
-  // T3: work without the voice output neither waits for the voice nor reserves it.
-  it('runs domain work while another run holds the voice', async () => {
-    const leases = new LeaseTable()
-    leases.acquire('voice', 'conversation-run', { salience: 0.7 })
-    const harness = createRunHarness({ leases, outputs: ['connection:minecraft'] })
-
-    await harness.runtime.ingest('chop a tree', { model: 'test', chatProvider: provider, outputTarget: 'minecraft' })
-
-    expect(harness.stream).toHaveBeenCalledOnce()
-    expect(leases.holder('voice')?.holder).toBe('conversation-run')
-  })
-
-  // The voice stays held while speech plays after its run. Owner input cuts in. Scene input waits for the speech to end.
-  it('lets owner input interrupt speech that outlived its run, while connection input waits for it', async () => {
-    const leases = new LeaseTable()
-    leases.acquire('voice', 'earlier-run', { salience: 0.7 })
-    leases.handOver('voice', 'earlier-run', 'playback:turn', { interruptible: true })
-    const harness = createRunHarness({ leases, outputs: ['chat:owner', 'voice'] })
-
-    const connection = harness.runtime.ingest('from the scene', { model: 'test', chatProvider: provider, outputTarget: 'discord-connection' }, 'scene-session')
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(harness.stream).not.toHaveBeenCalled()
-
-    await harness.runtime.ingest('hello', { model: 'test', chatProvider: provider })
-    expect(harness.stream).toHaveBeenCalledOnce()
-
-    await connection
-    expect(harness.stream).toHaveBeenCalledTimes(2)
-  })
-
   // T20: a limit of one serializes active work across every run owner, with the normal envelope and trace.
   it('waits for a working run of another owner when the limit is one', async () => {
     const runs = new RunTable()
@@ -430,33 +379,6 @@ describe('orchestrator runs', () => {
     await expect(harness.runtime.ingest('hello', { model: 'test', chatProvider: provider })).rejects.toThrow('provider down')
 
     expect(harness.runtime.getRuns().map(run => [run.state, run.silent])).toEqual([['blocked', undefined]])
-  })
-
-  // T6: the next turn reads the speech that the listener heard, not the full generated reply.
-  it('gives the next prompt only the delivered part of an interrupted voice reply', async () => {
-    const harness = createRunHarness()
-    const generated: AssistantTurn = {
-      type: 'assistant',
-      id: 'previous',
-      status: 'completed',
-      rounds: [{ id: 'round', content: [{ type: 'text', text: 'First sentence. Second sentence nobody heard.' }], toolInvocations: [], projectionIssues: [] }],
-    }
-    harness.messages.push(
-      { role: 'user', content: 'tell me', id: 'user-1' },
-      { role: 'assistant', content: 'First sentence. Second sentence nobody heard.', slices: [], tool_results: [], id: 'assistant-1', generationTranscript: generated, deliveredSpeech: 'First sentence.' },
-      { role: 'assistant', content: 'Plain reply that was cut.', slices: [], tool_results: [], id: 'assistant-2', deliveredSpeech: 'Plain' },
-    )
-
-    await harness.runtime.ingest('go on', { model: 'test', chatProvider: provider })
-
-    const conversation = harness.stream.mock.calls[0]?.[2]
-    const text = JSON.stringify(conversation)
-    expect(text).toContain('First sentence.…')
-    expect(text).not.toContain('Second sentence nobody heard')
-    expect(text).toContain('Plain…')
-    expect(text).not.toContain('Plain reply that was cut')
-    // The stored history keeps the generated text for the chat.
-    expect(harness.messages[1]).toMatchObject({ content: 'First sentence. Second sentence nobody heard.' })
   })
 
   // T11: the next owner turn resumes the session with the proactive reply in place, and no user turn appears for it.

@@ -1203,27 +1203,6 @@ describe('createChatOrchestratorRuntime', () => {
     expect(harness.stream).toHaveBeenCalledTimes(2)
   })
 
-  // The voice is exclusive. Two conversation runs cannot speak at once, but a domain run keeps going.
-  it('runs one voice send at a time across sessions', async () => {
-    const harness = createHarness()
-    let releaseFirst: (() => void) | undefined
-    harness.stream.mockImplementationOnce(async () => {
-      await new Promise<void>((resolve) => {
-        releaseFirst = resolve
-      })
-    })
-
-    const first = harness.runtime.ingest('first', { model: 'gpt-test', chatProvider: provider }, 'session-a')
-    await vi.waitFor(() => expect(harness.stream).toHaveBeenCalledTimes(1))
-    const second = harness.runtime.ingest('second', { model: 'gpt-test', chatProvider: provider }, 'session-b')
-    expect(harness.stream).toHaveBeenCalledTimes(1)
-    expect(harness.stateChanges.at(-1)).toMatchObject({ runningSessionIds: ['session-a'], voiceSessionId: 'session-a' })
-
-    releaseFirst?.()
-    await Promise.all([first, second])
-    expect(harness.stream).toHaveBeenCalledTimes(2)
-  })
-
   it('limits running sends across sessions', async () => {
     const harness = createHarness()
     harness.setLimits({ maxConcurrentRuns: 1 })

@@ -27,11 +27,6 @@ export interface ChatAssistantMessage extends AssistantMessage {
   /** True when transport failure ended this locally preserved response before completion. */
   interrupted?: true
   /**
-   * Speech that reached the listener before playback stopped. Present only for an interrupted voice reply.
-   * The chat keeps the generated text. Later prompts read only this delivered part.
-   */
-  deliveredSpeech?: string
-  /**
    * Set on a reply that a notification or idle check started without a user turn.
    * `runId` links the message to its intake and run trace. `source` names the event source.
    */

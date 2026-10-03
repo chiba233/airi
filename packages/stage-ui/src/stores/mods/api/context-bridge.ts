@@ -27,7 +27,6 @@ import { useModsServerChannelStore } from './channel-server'
 import { createContextChannel } from './context-channel'
 import { useContextSourceStore } from './context-source'
 import { resolveInputScene, useModuleDirectoryStore } from './module-directory'
-import { useSpeechDeviceStore } from './speech-device'
 
 export function normalizeContextSnapshot<C extends Pick<ChatStreamEventContext, 'contexts'>>(contexts: C): C {
   return {
@@ -67,7 +66,6 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   const contextObservability = useContextObservabilityStore()
   const contextSource = useContextSourceStore()
   const moduleDirectory = useModuleDirectoryStore()
-  const speechDevices = useSpeechDeviceStore()
   const scheduler = useSchedulerStore()
 
   /**
@@ -618,7 +616,6 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       // Every renderer answers reads for the handles it wrote.
       disposeHookFns.value.push(contextSource.listen())
       disposeHookFns.value.push(moduleDirectory.listen())
-      disposeHookFns.value.push(speechDevices.listen())
 
       disposeHookFns.value.push(serverChannelStore.onEvent('extension:module:de-announced', async (event) => {
         const sourceKey = getMetadataSourceLabel(event.data.identity)

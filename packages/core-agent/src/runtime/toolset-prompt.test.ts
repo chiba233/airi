@@ -5,7 +5,7 @@ import type { AssistantTurn, Conversation } from '../messages/types'
 
 import { expect, it, vi } from 'vitest'
 
-import { createSparkCommandTool, SPARK_COMMAND_TOOLSET_PROMPT } from '../agents/spark-command/tools'
+import { createSparkCommandTool } from '../agents/spark-command/tools'
 import { streamFrom } from './llm-service'
 
 interface RequestBody {
@@ -19,6 +19,9 @@ function guidanceOf(protocol: string, items: Array<{ role?: string, content?: un
   const role = protocol === 'responses' ? 'developer' : 'system'
   return (items ?? []).filter(item => item.role === role && JSON.stringify(item.content).includes(JSON.stringify(guidance).slice(1, 60)))
 }
+
+/** Guidance that a request includes only while it grants the relay tool. */
+const SPARK_COMMAND_TOOLSET_PROMPT = 'Use builtIn_emitSparkCommand to relay instructions to a connected module.'
 
 const relay: Tool = {
   type: 'function',

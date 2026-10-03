@@ -47,7 +47,6 @@ import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useMemoryStore } from './memory'
 import { useContextSourceStore } from './mods/api/context-source'
-import { speechDeviceOutput, useSpeechDeviceStore } from './mods/api/speech-device'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
@@ -58,7 +57,6 @@ import { useRecipesStore } from './recipes'
 import { useSchedulerStore } from './scheduler'
 import { useSettingsRunLimits } from './settings/run-limits'
 import { useSettingsSessionLifecycle } from './settings/session-lifecycle'
-import { useSpeechRuntimeStore } from './speech-runtime'
 import { executeToolCallRerun } from './tool-call-rerun'
 
 interface ForkOptions {
@@ -247,7 +245,6 @@ export const useChatStore = defineStore('chat', () => {
   const contextSource = useContextSourceStore()
   const cardStore = useAiriCardStore()
   const mood = useCharacterMoodStore()
-  const speechRuntime = useSpeechRuntimeStore()
   const recipes = useRecipesStore()
   const memory = useMemoryStore()
   // The recipe list reaches only runs that hold the use tool, so a run without tools never claims a recipe.
@@ -273,7 +270,6 @@ export const useChatStore = defineStore('chat', () => {
   const contextObservability = useContextObservabilityStore()
   const scheduler = useSchedulerStore()
   const triage = useTriageStore()
-  const speechDevices = useSpeechDeviceStore()
   const { activeSessionId } = storeToRefs(chatSession)
   const { streamingMessage } = storeToRefs(chatStream)
 
@@ -376,20 +372,14 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * Builds the limits for one send. The owner chat shows every session, so every run reaches the owner.
-   * The voice reaches every active speech device. While a device is active, only a run of that device's scene speaks,
-   * and a local conversation answers in text, so private replies never reach the device's audience.
-   * Without a device, only a local conversation speaks. An external reply goes to its scene as text.
+   * Only a local conversation speaks. An external reply goes to its scene as text.
    * A module without a declared scene speaks for the owner.
    */
   function createRunEnvelope(sessionId: string, options: ChatOrchestratorSendOptions): Omit<ExecutionEnvelope, 'sessionId'> {
     const meta = chatSession.sessionMetas[sessionId]
     // Session metadata is reactive. The run table clones a plain copy.
     const bindings = [...meta?.bindings ?? []]
-    // A device speaks only when the speech host can forward this voice. Otherwise the scene gets text, so a reply is never lost.
-    const device = options.outputTarget && speechRuntime.forwardsToDevices ? speechDevices.forBindings(bindings) : undefined
-    const outputs = options.outputTarget
-      ? device ? ['chat:owner', 'voice', speechDeviceOutput(device.binding)] : ['chat:owner', `connection:${options.outputTarget}`]
-      : speechDevices.devices.length && speechRuntime.forwardsToDevices ? ['chat:owner'] : ['chat:owner', 'voice']
+    const outputs = options.outputTarget ? ['chat:owner', `connection:${options.outputTarget}`] : ['chat:owner', 'voice']
     return {
       bindings,
       outputs,
@@ -860,7 +850,6 @@ export const useChatStore = defineStore('chat', () => {
     getLimits: () => runLimitSettings.limits,
     runs: scheduler.runs,
     intake: scheduler.intake,
-    leases: scheduler.leases,
     decideBeforeReply: decideRecipesBeforeReply,
     onRunChange: trackRun,
     foregroundStream: {
@@ -1148,19 +1137,6 @@ export const useChatStore = defineStore('chat', () => {
     return runtime.cancelRun(runId, options)
   }
 
-  /**
-   * Records the speech that reached the listener before playback stopped. Later prompts read only that part.
-   * The chat keeps the generated text. A missing session or message changes nothing.
-   */
-  async function recordDeliveredSpeech(sessionId: string, messageId: string, deliveredSpeech: string) {
-    const messages = chatSession.getSessionMessagesIfLoaded(sessionId)
-    if (!messages?.some(message => message.id === messageId && message.role === 'assistant'))
-      return
-    chatSession.setSessionMessages(sessionId, messages.map(message => message.id === messageId && message.role === 'assistant'
-      ? { ...toRaw(message), deliveredSpeech }
-      : message))
-  }
-
   function getPendingQueuedSendSnapshot() {
     return runtime.getPendingQueuedSendSnapshot()
   }
@@ -1187,7 +1163,6 @@ export const useChatStore = defineStore('chat', () => {
     endHandover,
     cancelPendingSends,
     cancelRun,
-    recordDeliveredSpeech,
     getPendingQueuedSendSnapshot,
 
     clearHooks: runtime.hooks.clearHooks,
@@ -1216,7 +1191,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 }, {
   synced: {
-    actions: ['cancelPendingSends', 'cancelRun', 'cleanup', 'deleteSession', 'endHandover', 'recordDeliveredSpeech', 'rerunToolCall', 'retry', 'send'],
+    actions: ['cancelPendingSends', 'cancelRun', 'cleanup', 'deleteSession', 'endHandover', 'rerunToolCall', 'retry', 'send'],
     state: true,
   },
 })
