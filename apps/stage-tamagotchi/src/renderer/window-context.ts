@@ -6,6 +6,8 @@ export interface RendererWindowContext {
   leadership: LeadershipMode
   /** Determines whether this renderer initializes Stage integrations. */
   stageRuntime: 'full' | 'minimal'
+  /** Whether this renderer is the main window page, which hosts the fullscreen mode and routes its surfaces. */
+  fullscreenHost: boolean
 }
 
 function normalizeRoutePath(routePath: string) {
@@ -30,7 +32,7 @@ export function resolveInitialRendererRoutePath(routePath: string, hash = global
  *
  * @example
  * resolveRendererWindowContext('?synced-leader=false&stage-runtime=minimal')
- * // => { leadership: 'follower-only', stageRuntime: 'minimal' }
+ * // => { leadership: 'follower-only', stageRuntime: 'minimal', fullscreenHost: false }
  */
 export function resolveRendererWindowContext(search = globalThis.location?.search ?? ''): RendererWindowContext {
   const query = new URLSearchParams(search)
@@ -47,5 +49,6 @@ export function resolveRendererWindowContext(search = globalThis.location?.searc
   return {
     leadership: syncedLeader === 'true' ? 'leader-only' : 'follower-only',
     stageRuntime: stageRuntime === 'minimal' ? 'minimal' : 'full',
+    fullscreenHost: query.get('fullscreen-host') === 'true',
   }
 }

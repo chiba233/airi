@@ -227,7 +227,8 @@ export async function setupMainWindow(params: {
   })
 
   await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/', {
-    query: { 'synced-leader': 'true' },
+    // The main window page hosts the fullscreen mode, so it routes the fullscreen surfaces under its own page.
+    query: { 'synced-leader': 'true', 'fullscreen-host': 'true' },
   }))
 
   /**

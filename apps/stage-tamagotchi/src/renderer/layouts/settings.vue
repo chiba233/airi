@@ -1,28 +1,74 @@
 <script setup lang="ts">
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { PageHeader } from '@proj-airi/stage-ui/components'
-import { ref } from 'vue'
+import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+import { computed, inject, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute } from 'vue-router'
 
 import WindowTitleBar from '../components/Window/TitleBar.vue'
 
+import { fullscreenPanelKey } from '../components/fullscreen/panel'
 import { useRestoreScroll } from '../composables/use-restore-scroll'
-import { useSettingsRouteHeader } from '../composables/use-settings-route-header'
 
 const route = useRoute()
+const { t } = useI18n()
+const providersStore = useProviderStore()
 const scrollContainer = ref<HTMLElement>()
 useRestoreScroll(scrollContainer)
+// The fullscreen panel of the main window frames settings itself, so the layout leaves out the window title bar.
+const inFullscreenPanel = inject(fullscreenPanelKey, false)
+
+const routeMeta = computed(() => route.meta as {
+  titleKey?: string
+  subtitleKey?: string
+  title?: string
+  subtitle?: string
+})
+
+const providerTitle = computed(() => {
+  if (!route.path.startsWith('/settings/providers/'))
+    return undefined
+
+  const segments = route.path.split('/').filter(Boolean)
+  const providerId = segments[3]
+
+  if (!providerId)
+    return undefined
+
+  return providersStore.findProviderDefinition(providerId)?.nameLocalize({ t })
+})
 
 // const activeSettingsTutorial = ref('default')
-const routeHeaderMetadata = useSettingsRouteHeader(route)
+const routeHeaderMetadata = computed(() => {
+  const { titleKey, subtitleKey, title, subtitle } = routeMeta.value
+  const resolvedTitle = titleKey ? t(titleKey) : title
+  const resolvedSubtitle = subtitleKey ? t(subtitleKey) : subtitle
+
+  if (resolvedTitle || resolvedSubtitle) {
+    return {
+      title: resolvedTitle,
+      subtitle: resolvedSubtitle,
+    }
+  }
+
+  if (providerTitle.value) {
+    return {
+      title: providerTitle.value,
+      subtitle: t('settings.title'),
+    }
+  }
+
+  return undefined
+})
 </script>
 
 <template>
   <div h-full w-full bg="$bg-color" flex="~ col">
-    <WindowTitleBar :title="routeHeaderMetadata?.title ?? ''" icon="i-solar:settings-bold" />
+    <WindowTitleBar v-if="!inFullscreenPanel" :title="routeHeaderMetadata?.title ?? ''" icon="i-solar:settings-bold" />
     <div
       :style="{
-        paddingTop: `44px`,
+        paddingTop: inFullscreenPanel ? '0px' : `44px`,
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         paddingRight: 'env(safe-area-inset-right, 0px)',
         paddingLeft: 'env(safe-area-inset-left, 0px)',

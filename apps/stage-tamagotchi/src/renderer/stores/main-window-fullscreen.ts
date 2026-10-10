@@ -2,10 +2,11 @@ import type { MainWindowFullscreenSurface } from '../../shared/eventa'
 
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowReactive } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { electronMainWindowFullscreenSurfaceChanged } from '../../shared/eventa'
-import { fullscreenSurfaces } from '../components/fullscreen/surfaces'
+import { fullscreenSurfaceOf, fullscreenSurfaces } from '../components/fullscreen/surfaces'
 
 /**
  * Where the fullscreen mode of the main window is.
@@ -17,9 +18,16 @@ import { fullscreenSurfaces } from '../components/fullscreen/surfaces'
  */
 export type MainWindowFullscreenPhase = 'closed' | 'expanding' | 'open' | 'closing'
 
+/** The page of the main window outside the fullscreen mode. */
+const MAIN_PAGE = '/'
+
 /**
  * The fullscreen mode of the main window: the window covers its display, and a surface from
  * {@link fullscreenSurfaces} shows beside the character.
+ *
+ * Switching surfaces is not a navigation. Each surface that showed stays mounted until the mode closes, so it keeps what
+ * it holds, and a settings page keeps its route. Closing the mode leaves those pages through the router, so a page can
+ * stop it, like the card editor does for unsaved changes.
  *
  * Use when:
  * - An entry point opens a surface, the island switches it, or the main page runs the open and close transitions.
@@ -28,14 +36,17 @@ export type MainWindowFullscreenPhase = 'closed' | 'expanding' | 'open' | 'closi
  * - The main page moves the window and the stage, and reports the end of each transition through `settle`.
  *
  * Returns:
- * - The phase, the surface, and actions that open, resume, close, and settle the mode.
+ * - The phase, the surface, the mounted surfaces, and actions that open, resume, close, and settle the mode.
  */
 export const useMainWindowFullscreenStore = defineStore('main-window-fullscreen', () => {
+  const router = useRouter()
   const reportSurface = useElectronEventaInvoke(electronMainWindowFullscreenSurfaceChanged)
 
   const phase = ref<MainWindowFullscreenPhase>('closed')
   /** What shows on the right while the mode is active. */
   const surface = ref<MainWindowFullscreenSurface>('settings')
+  /** The surfaces that showed since the mode opened. Their panels stay mounted until it closes. */
+  const mounted = shallowReactive(new Set<MainWindowFullscreenSurface>())
   const active = computed(() => phase.value !== 'closed')
 
   /** Tells the main process what shows, which it needs to hand the chat draft over and to restore after a reload. */
@@ -43,10 +54,15 @@ export const useMainWindowFullscreenStore = defineStore('main-window-fullscreen'
     void reportSurface({ surface: shown }).catch(error => console.error('[Main window fullscreen] Failed to report the surface:', error))
   }
 
-  /** Shows a surface, opening the mode when it is closed. `route` goes to the surface, such as a settings page. */
-  async function open(next: MainWindowFullscreenSurface, route?: string) {
-    await fullscreenSurfaces[next].prepare?.(route)
+  function show(next: MainWindowFullscreenSurface) {
     surface.value = next
+    mounted.add(next)
+  }
+
+  /** Shows a surface, opening the mode when it is closed. `page` goes to the surface, such as a settings page. */
+  async function open(next: MainWindowFullscreenSurface, page?: string) {
+    await fullscreenSurfaces[next].prepare?.({ router, page })
+    show(next)
     if (phase.value === 'closed')
       phase.value = 'expanding'
     else if (phase.value === 'open')
@@ -54,33 +70,66 @@ export const useMainWindowFullscreenStore = defineStore('main-window-fullscreen'
   }
 
   /** Shows the mode at once, without a transition, when the main window kept it across a page reload. */
-  async function resume(shown: MainWindowFullscreenSurface) {
+  async function resume(kept: MainWindowFullscreenSurface) {
     if (phase.value !== 'closed')
       return
-    await fullscreenSurfaces[shown].prepare?.()
-    surface.value = shown
+    await fullscreenSurfaces[kept].prepare?.({ router })
+    show(kept)
     phase.value = 'open'
-    report(shown)
+    report(kept)
   }
 
-  function close() {
+  /**
+   * Closes the mode. The router leaves the surface pages first. A page that stops it, such as the card editor with
+   * unsaved changes, keeps the mode open, and settings show so that its dialog is in view.
+   */
+  async function close() {
+    if (phase.value !== 'open')
+      return
+    if (fullscreenSurfaceOf(router.currentRoute.value.path)) {
+      const failure = await router.push(MAIN_PAGE)
+      if (failure) {
+        show('settings')
+        report('settings')
+        return
+      }
+    }
+    // A page that leaves on its own while the mode is open also arrives here, and the check below keeps one close.
     if (phase.value !== 'open')
       return
     phase.value = 'closing'
-    // The surface unmounts as the transition starts, so the chat has no composer to collect from any more.
+    // The surfaces unmount as the transition starts, so the chat has no composer to collect from any more.
     report(undefined)
   }
 
-  /** Ends a transition. A closed mode resets every surface, so the next opening starts fresh. */
+  /** Hides a surface whose content moved elsewhere, such as the chat after a chat mode switch, and closes an empty mode. */
+  async function dismiss(gone: MainWindowFullscreenSurface) {
+    if (phase.value !== 'open')
+      return
+    mounted.delete(gone)
+    const remaining = [...mounted][0]
+    if (!remaining) {
+      await close()
+      return
+    }
+    if (surface.value === gone) {
+      surface.value = remaining
+      report(remaining)
+    }
+  }
+
+  /** Ends a transition. A closed mode unmounts every surface, so the next opening starts fresh. */
   function settle(state: 'open' | 'closed') {
     phase.value = state
     if (state === 'open') {
       report(surface.value)
       return
     }
-    for (const definition of Object.values(fullscreenSurfaces))
-      definition.reset?.()
+    mounted.clear()
+    // A rollback can close the mode on a settings page, so the route returns to the main page too.
+    if (fullscreenSurfaceOf(router.currentRoute.value.path))
+      void router.replace(MAIN_PAGE)
   }
 
-  return { phase, surface, active, open, resume, close, settle }
+  return { phase, surface, mounted, active, open, resume, close, dismiss, settle }
 })

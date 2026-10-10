@@ -10,8 +10,8 @@ import InteractiveArea from '../InteractiveArea.vue'
 
 import { useChatDraftHandover } from '../../composables/use-chat-draft-handover'
 
-// The legacy chat window, inside the fullscreen mode. The header takes the place of its title bar, because the
-// panel is not a window to drag.
+// The page of the chat surface: the legacy chat window, inside the fullscreen panel. The header takes the place of its
+// title bar, because the panel is not a window to drag.
 const { activeCard } = storeToRefs(useAiriCardStore())
 const sessionsDrawerOpen = shallowRef(false)
 const interactiveArea = useTemplateRef<InstanceType<typeof InteractiveArea>>('interactive-area')
@@ -20,15 +20,7 @@ useChatDraftHandover(interactiveArea)
 </script>
 
 <template>
-  <div
-    :class="[
-      'h-full w-full flex flex-col',
-      'rounded-3xl',
-      'bg-neutral-50 dark:bg-neutral-950',
-      'shadow-2xl shadow-neutral-900/10',
-      'overflow-hidden',
-    ]"
-  >
+  <div :class="['h-full w-full flex flex-col', 'bg-neutral-50 dark:bg-neutral-950']">
     <div :class="['flex items-center', 'gap-2', 'px-4 py-2']">
       <button
         type="button"

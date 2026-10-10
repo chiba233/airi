@@ -25,7 +25,8 @@ import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/
 import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, shallowRef, toRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
 import FullscreenIsland from '../components/fullscreen/fullscreen-island.vue'
@@ -35,7 +36,8 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 
 import { electronAppIsWayland, electronMainWindowCloseFullscreen, electronMainWindowEnterFullscreen, electronMainWindowExitFullscreen, electronMainWindowGetFullscreenState, electronMainWindowOpenFullscreen, electronMainWindowSetFullscreenBounds, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
-import { fullscreenSurfaces } from '../components/fullscreen/surfaces'
+import { fullscreenPanelKey } from '../components/fullscreen/panel'
+import { fullscreenSurfaceOf, fullscreenSurfaces } from '../components/fullscreen/surfaces'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
@@ -277,21 +279,29 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
 })
 
 const fullscreen = useMainWindowFullscreenStore()
-const { phase: fullscreenPhase, active: fullscreenActive, surface: fullscreenSurface } = storeToRefs(fullscreen)
+const { phase: fullscreenPhase, active: fullscreenActive, surface: fullscreenSurface, mounted: mountedSurfaces } = storeToRefs(fullscreen)
+const router = useRouter()
+// The settings layout draws the panel content instead of the settings window frame when it shows here.
+provide(fullscreenPanelKey, true)
 const eventaContext = useElectronEventaContext()
 // Every settings entry point and the fullscreen chat mode ask the main process, which forwards the request here.
 const stopOpenFullscreenListener = eventaContext.value.on(electronMainWindowOpenFullscreen, (event) => {
   if (event?.body)
     void fullscreen.open(event.body.surface, event.body.route)
 })
-// A chat mode switch away from the fullscreen chat closes the mode once the new chat window holds the draft.
+// A chat mode switch away from the fullscreen chat removes it once the new chat window holds the draft.
 const stopCloseFullscreenListener = eventaContext.value.on(electronMainWindowCloseFullscreen, (event) => {
-  if (event?.body?.surface === fullscreenSurface.value)
-    fullscreen.close()
+  if (event?.body)
+    void fullscreen.dismiss(event.body.surface)
 })
 onUnmounted(() => {
   stopOpenFullscreenListener()
   stopCloseFullscreenListener()
+})
+// A settings page that returns to the main page on its own, such as its back button on the first page, ends the mode.
+watch(() => fullscreenSurfaceOf(router.currentRoute.value.path), (current, previous) => {
+  if (previous && !current)
+    void fullscreen.close()
 })
 const enterFullscreenWindow = useElectronEventaInvoke(electronMainWindowEnterFullscreen)
 const setFullscreenWindowBounds = useElectronEventaInvoke(electronMainWindowSetFullscreenBounds)
@@ -450,8 +460,12 @@ async function leaveFullscreen(reason: string) {
 async function resumeFullscreen() {
   try {
     const state = await getFullscreenWindowState()
-    if (!state)
+    // The window decides. A route that names a surface while the window is not in the mode goes back to the main page.
+    if (!state) {
+      if (fullscreenSurfaceOf(router.currentRoute.value.path))
+        await router.replace('/')
       return
+    }
     const plan = planFor(state.home, state.workArea)
     fullscreenPlan = plan
     stageLayoutAnimated.value = false
@@ -763,8 +777,22 @@ const cursorPosition = computed(() => ({
     leave-active-class="transition-all duration-300 ease-in"
     leave-to-class="opacity-0 translate-x-8"
   >
-    <div v-if="fullscreenPhase === 'open'" :class="['fixed z-3', 'bottom-6 right-6 top-6', 'w-[54%]']">
-      <component :is="fullscreenSurfaces[fullscreenSurface].panel" />
+    <div
+      v-if="fullscreenPhase === 'open'"
+      :class="[
+        'fixed z-3',
+        'bottom-6 right-6 top-6',
+        'w-[54%]',
+        'rounded-3xl',
+        'bg-$bg-color',
+        'shadow-2xl shadow-neutral-900/10',
+        'overflow-hidden',
+      ]"
+    >
+      <!-- Each surface that showed stays mounted until the mode closes, so switching back finds it as it was. -->
+      <div v-for="id in mountedSurfaces" v-show="id === fullscreenSurface" :key="id" :class="['h-full w-full']">
+        <component :is="fullscreenSurfaces[id].panel" />
+      </div>
     </div>
   </Transition>
 </template>
