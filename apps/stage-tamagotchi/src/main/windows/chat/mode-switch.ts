@@ -53,8 +53,8 @@ interface DraftHandover {
 export function createChatModeSwitch(params: {
   getMode: () => ChatWindowMode
   setMode: (mode: ChatWindowMode) => void
-  legacy: ChatModeWindow
-  floating: ChatModeWindow
+  /** The window of each chat mode. */
+  windows: Record<ChatWindowMode, ChatModeWindow>
 }) {
   const mutex = new Mutex()
   let handover: DraftHandover | undefined
@@ -70,18 +70,13 @@ export function createChatModeSwitch(params: {
     }
   }
 
-  function windowsFor(mode: ChatWindowMode) {
-    return mode === 'floating'
-      ? { next: params.floating, previous: params.legacy }
-      : { next: params.legacy, previous: params.floating }
-  }
-
   async function switchWindows(mode: ChatWindowMode) {
     const previousMode = params.getMode()
     if (mode === previousMode)
       return
 
-    const { next, previous } = windowsFor(mode)
+    const next = params.windows[mode]
+    const previous = params.windows[previousMode]
     const draft = await previous.collectDraft()
     const settled = Promise.withResolvers<boolean>()
     handover = { target: mode, draft, settle: settled.resolve }
@@ -108,12 +103,16 @@ export function createChatModeSwitch(params: {
     run,
     /**
      * Shows the window of the saved mode, for a caller that does not change
-     * the mode. The other mode's window is already closed, so no draft moves.
+     * the mode. The windows of the other modes are already closed, so no
+     * draft moves.
      */
     show: () => run(async () => {
-      const { next, previous } = windowsFor(params.getMode())
-      await next.open()
-      previous.close()
+      const mode = params.getMode()
+      await params.windows[mode].open()
+      for (const [other, window] of Object.entries(params.windows)) {
+        if (other !== mode)
+          window.close()
+      }
     }),
     /** Saves `mode` and swaps the open window, carrying the draft over. */
     switchTo: (mode: ChatWindowMode) => run(() => switchWindows(mode)),

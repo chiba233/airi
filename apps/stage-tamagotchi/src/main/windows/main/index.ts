@@ -1,17 +1,21 @@
 import type { Rectangle } from 'electron'
 import type { InferOutput } from 'valibot'
 
+import type { MainWindowFullscreenSurface } from '../../../shared/eventa'
 import type { I18n } from '../../libs/i18n'
 import type { ServerChannel } from '../../services/airi/channel-server'
 import type { GodotStageManager } from '../../services/airi/godot-stage'
 import type { IOTraceRecordingService } from '../../services/airi/io-trace-recording'
 import type { McpManager } from '../../services/airi/mcp-servers'
 import type { AutoUpdater } from '../../services/electron/auto-updater'
+import type { GlobalShortcutService } from '../../services/electron/global-shortcut'
 import type { ChatWindowManager } from '../chat'
+import type { DevtoolsWindowManager } from '../devtools'
 import type { EditorWindowManager } from '../editor'
 import type { NoticeWindowManager } from '../notice'
 import type { OnboardingWindowManager } from '../onboarding'
 import type { SettingsWindowManager } from '../settings'
+import type { SpotlightWindowManager } from '../spotlight'
 import type { WidgetsWindowManager } from '../widgets'
 
 import { dirname, join, resolve } from 'node:path'
@@ -19,17 +23,19 @@ import { env } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
+import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
+import { animate, utils } from 'animejs'
 import { defu } from 'defu'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import { isLinux, isMacOS } from 'std-env'
 import { array, number, object, optional, string } from 'valibot'
 
 import icon from '../../../../resources/icon.png?asset'
 
-import { electronStartDraggingWindow } from '../../../shared/eventa'
+import { electronMainWindowCloseFullscreen, electronMainWindowEnterFullscreen, electronMainWindowExitFullscreen, electronMainWindowFullscreenSurfaceChanged, electronMainWindowGetFullscreenState, electronMainWindowOpenFullscreen, electronMainWindowSetFullscreenBounds, electronStartDraggingWindow } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
@@ -64,6 +70,13 @@ export async function setupMainWindow(params: {
   onboardingWindowManager: OnboardingWindowManager
   ioTraceRecording: IOTraceRecordingService
   inlayWindow: () => Promise<BrowserWindow>
+  devtoolsWindow: DevtoolsWindowManager
+  globalShortcut: GlobalShortcutService
+  spotlightWindow: SpotlightWindowManager
+  /** Receives the function that shows a surface in fullscreen mode, for every settings entry point of the app. */
+  onFullscreenOpener?: (open: (surface: MainWindowFullscreenSurface, route?: string) => void) => void
+  /** Reports when fullscreen mode starts and ends. */
+  onFullscreenChange?: (active: boolean) => void
 }) {
   const {
     setup: setupConfig,
@@ -118,7 +131,13 @@ export async function setupMainWindow(params: {
     }
   }
 
+  /** The bounds before fullscreen mode. While it is set, the window covers its display and the config keeps the old bounds. */
+  let boundsBeforeFullscreen: Rectangle | undefined
+
   function handleNewBounds(newBounds: Rectangle) {
+    if (boundsBeforeFullscreen)
+      return
+
     const config = getConfig()
     if (!config.windows || !Array.isArray(config.windows)) {
       config.windows = []
@@ -170,7 +189,18 @@ export async function setupMainWindow(params: {
     window.setFullScreenable(false)
     window.setWindowButtonVisibility(false)
   }
-  setWindowAlwaysOnTop(window, true)
+  // The main window's pin has one owner. `pinned` is the user's choice, and every pin request of the page goes through
+  // `setPinned`. The window is on top only while the user pinned it and fullscreen mode is off, because fullscreen
+  // covers the display and must let other apps come above it.
+  let pinned = true
+  function applyPin() {
+    setWindowAlwaysOnTop(window, pinned && !boundsBeforeFullscreen)
+  }
+  function setPinned(value: boolean) {
+    pinned = value
+    applyPin()
+  }
+  applyPin()
 
   window.on('ready-to-show', () => window!.show())
   protectPrivilegedWindowNavigation(window)
@@ -190,6 +220,10 @@ export async function setupMainWindow(params: {
     onboardingWindowManager: params.onboardingWindowManager,
     ioTraceRecording: params.ioTraceRecording,
     inlayWindow: params.inlayWindow,
+    devtoolsWindow: params.devtoolsWindow,
+    globalShortcut: params.globalShortcut,
+    spotlightWindow: params.spotlightWindow,
+    setPinned,
   })
 
   await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/', {
@@ -228,6 +262,132 @@ export async function setupMainWindow(params: {
       cleanUpWindowDraggingInvokeHandler()
     })
   }
+
+  // Fullscreen mode: the window covers the work area of its display, and the page shows a surface, such as settings or
+  // the chat, beside the character. The page moves the window in steps that never change its size and its position
+  // together: a frame from before the change shows at the new position for a moment, and the stage would blink.
+  //
+  // Fullscreen mode is all or nothing. While `boundsBeforeFullscreen` is set, the window covers its display and the pin
+  // owner keeps it off the top. `leaveFullscreen` is the only way out, and it is safe to call at any time. A page that reloads reads the mode
+  // and shows it again. A renderer that dies shows nothing, so the window leaves fullscreen mode then.
+  /** What the page shows on the right, as it reports it. */
+  let fullscreenSurface: MainWindowFullscreenSurface | undefined
+  const fullscreenLog = useLogg('main-window-fullscreen').useGlobalConfig()
+  let fullscreenGlide: { animation: ReturnType<typeof animate>, finish: () => void } | undefined
+
+  /** Ends the running glide. Its caller resolves at once, so no step waits on a glide that will never finish. */
+  function stopFullscreenGlide() {
+    const glide = fullscreenGlide
+    fullscreenGlide = undefined
+    glide?.animation.pause()
+    glide?.finish()
+  }
+
+  /** Leaves fullscreen mode. Each caller names its reason, so the log tells why it closed. */
+  function leaveFullscreen(reason: string) {
+    stopFullscreenGlide()
+    fullscreenSurface = undefined
+    if (!boundsBeforeFullscreen || window.isDestroyed())
+      return
+    fullscreenLog.log(`Leaving fullscreen mode: ${reason}`)
+    const bounds = boundsBeforeFullscreen
+    boundsBeforeFullscreen = undefined
+    window.setBounds(bounds)
+    applyPin()
+    params.chatWindow.setMainWindowCovered(false)
+    params.onFullscreenChange?.(false)
+  }
+
+  // `onlySameWindow` hears only this window, so no other window can move it or end its fullscreen mode.
+  const { context: fullscreenContext } = createContext(ipcMain, window, { onlySameWindow: true })
+  const cleanUpEnterFullscreen = defineInvokeHandler(fullscreenContext, electronMainWindowEnterFullscreen, () => {
+    if (!boundsBeforeFullscreen) {
+      boundsBeforeFullscreen = window.getBounds()
+      fullscreenLog.log('Entering fullscreen mode')
+      applyPin()
+      window.setIgnoreMouseEvents(false)
+      params.chatWindow.setMainWindowCovered(true)
+      params.onFullscreenChange?.(true)
+    }
+    return { bounds: window.getBounds(), workArea: screen.getDisplayMatching(boundsBeforeFullscreen).workArea }
+  })
+  const cleanUpSetFullscreenBounds = defineInvokeHandler(fullscreenContext, electronMainWindowSetFullscreenBounds, (payload) => {
+    stopFullscreenGlide()
+    // Bounds outside fullscreen mode would leave the window changed with nothing to restore it.
+    if (!payload || !boundsBeforeFullscreen || window.isDestroyed())
+      throw new Error('The main window is not in fullscreen mode')
+    const { bounds, duration } = payload
+    if (!duration) {
+      window.setBounds(bounds)
+      return
+    }
+    // A glide moves the window and keeps its size, so the page content moves with it and never blinks.
+    const start = window.getBounds()
+    const state = { x: start.x, y: start.y }
+    return new Promise<void>((resolve) => {
+      const glide = {
+        finish: resolve,
+        animation: animate(state, {
+          x: bounds.x,
+          y: bounds.y,
+          duration,
+          ease: 'outCubic',
+          modifier: utils.round(0),
+          onRender: () => {
+            if (!window.isDestroyed())
+              window.setPosition(state.x, state.y)
+          },
+          onComplete: () => {
+            if (fullscreenGlide === glide)
+              fullscreenGlide = undefined
+            resolve()
+          },
+        }),
+      }
+      fullscreenGlide = glide
+    })
+  })
+  const cleanUpSurfaceChanged = defineInvokeHandler(fullscreenContext, electronMainWindowFullscreenSurfaceChanged, (payload) => {
+    fullscreenSurface = boundsBeforeFullscreen ? payload?.surface : undefined
+  })
+  const cleanUpExitFullscreen = defineInvokeHandler(fullscreenContext, electronMainWindowExitFullscreen, payload => leaveFullscreen(payload?.reason ?? 'the page gave no reason'))
+  const cleanUpGetFullscreenState = defineInvokeHandler(fullscreenContext, electronMainWindowGetFullscreenState, () => boundsBeforeFullscreen
+    ? { home: boundsBeforeFullscreen, workArea: screen.getDisplayMatching(boundsBeforeFullscreen).workArea, surface: fullscreenSurface }
+    : undefined)
+
+  /** Shows a surface in fullscreen mode. A hidden or minimized window comes back first, because the surface lives here. */
+  function openFullscreen(surface: MainWindowFullscreenSurface, route?: string) {
+    if (window.isDestroyed())
+      return
+    if (window.isMinimized())
+      window.restore()
+    if (!window.isVisible())
+      window.show()
+    fullscreenContext.emit(electronMainWindowOpenFullscreen, { surface, route })
+  }
+
+  params.onFullscreenOpener?.(openFullscreen)
+  params.chatWindow.attachFullscreen({
+    window,
+    context: fullscreenContext,
+    open: () => openFullscreen('chat'),
+    close: () => {
+      if (!window.isDestroyed())
+        fullscreenContext.emit(electronMainWindowCloseFullscreen, { surface: 'chat' })
+    },
+    isShown: () => fullscreenSurface === 'chat',
+  })
+  // A reload stops the glide that the old page waited on. The new page sets the bounds again.
+  window.webContents.on('did-start-loading', stopFullscreenGlide)
+  window.webContents.on('render-process-gone', (_, details) => leaveFullscreen(`the renderer stopped (${details.reason})`))
+  window.on('closed', () => {
+    stopFullscreenGlide()
+    cleanUpEnterFullscreen()
+    cleanUpSetFullscreenBounds()
+    cleanUpSurfaceChanged()
+    cleanUpExitFullscreen()
+    cleanUpGetFullscreenState()
+  })
 
   initScreenCaptureForWindow(window)
 

@@ -38,6 +38,40 @@ export const electronOpenMainDevtools = defineInvokeEventa('eventa:invoke:electr
 export const electronCenterMainWindow = defineInvokeEventa<Rectangle>('eventa:invoke:electron:windows:main:center')
 export const electronOpenEditor = defineInvokeEventa<void>('eventa:invoke:electron:windows:editor:open')
 export const electronOpenSettings = defineInvokeEventa<void, { route?: string }>('eventa:invoke:electron:windows:settings:open')
+/**
+ * What the main window shows on the right while it covers its display.
+ *
+ * - `settings`: the settings pages.
+ * - `chat`: the chat, in the `fullscreen` chat mode.
+ */
+export type MainWindowFullscreenSurface = 'settings' | 'chat'
+
+/**
+ * Starts the fullscreen mode of the main window. The window stops keeping its bounds in the config and leaves always on top.
+ * Returns its bounds and the work area of its display, so the page can plan the move.
+ */
+export const electronMainWindowEnterFullscreen = defineInvokeEventa<{ bounds: Rectangle, workArea: Rectangle }>('eventa:invoke:electron:windows:main:fullscreen:enter')
+/**
+ * Sets the main window bounds in fullscreen mode. With a duration, the window keeps its size and glides to the position,
+ * and the call resolves when the glide ends.
+ */
+export const electronMainWindowSetFullscreenBounds = defineInvokeEventa<void, { bounds: Rectangle, duration?: number }>('eventa:invoke:electron:windows:main:fullscreen:bounds')
+/**
+ * Reports what the page shows on the right, or nothing once fullscreen mode closes. The main process reads it to hand
+ * the chat draft over and to show the same surface after a reload.
+ */
+export const electronMainWindowFullscreenSurfaceChanged = defineInvokeEventa<void, { surface?: MainWindowFullscreenSurface }>('eventa:invoke:electron:windows:main:fullscreen:surface-changed')
+/**
+ * Reads whether the main window is in fullscreen mode. A page that loads while it is, after a reload for example,
+ * shows the fullscreen mode at once. Returns the bounds before fullscreen, the work area, and the surface.
+ */
+export const electronMainWindowGetFullscreenState = defineInvokeEventa<{ home: Rectangle, workArea: Rectangle, surface?: MainWindowFullscreenSurface } | undefined>('eventa:invoke:electron:windows:main:fullscreen:state')
+/** Returns the main window to the bounds and the always-on-top state that it had before fullscreen mode. The main process logs `reason`. */
+export const electronMainWindowExitFullscreen = defineInvokeEventa<void, { reason: string }>('eventa:invoke:electron:windows:main:fullscreen:exit')
+/** Asks the main window page to show a surface in fullscreen mode. Every settings entry point and the fullscreen chat mode send it. */
+export const electronMainWindowOpenFullscreen = defineEventa<{ surface: MainWindowFullscreenSurface, route?: string }>('eventa:event:electron:windows:main:fullscreen:open')
+/** Asks the main window page to close fullscreen mode when it shows `surface`, for a chat mode switch that leaves the fullscreen chat. */
+export const electronMainWindowCloseFullscreen = defineEventa<{ surface: MainWindowFullscreenSurface }>('eventa:event:electron:windows:main:fullscreen:close')
 /** Shows the inlay without focus. The tray menu opens it with focus. */
 export const electronOpenInlay = defineInvokeEventa<void>('eventa:invoke:electron:windows:inlay:open')
 export const electronInlayHide = defineInvokeEventa<void>('eventa:invoke:electron:windows:inlay:hide')
@@ -50,13 +84,15 @@ export const ioTraceRecordingSetEnabled = defineInvokeEventa<IOTraceRecordingSta
 export const ioTraceRecordingRecordSpan = defineInvokeEventa<void, SerializedIOSpan>('eventa:invoke:electron:io-trace-recording:record-span')
 
 /**
- * Which window the Controls Island chat button opens.
+ * Where the Controls Island chat button opens the chat.
  *
  * - `legacy`: the opaque chat window with a title bar.
  * - `floating`: a transparent, click-through window where only the chat
  *   bubbles and controls are drawn. The chat button folds and unfolds it.
+ * - `fullscreen`: the main window covers its display and shows the chat
+ *   beside the character. It has no window of its own.
  */
-export type ChatWindowMode = 'legacy' | 'floating'
+export type ChatWindowMode = 'legacy' | 'floating' | 'fullscreen'
 
 /**
  * Where the floating chat window stays.

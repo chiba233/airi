@@ -1,63 +1,20 @@
 <script setup lang="ts">
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { PageHeader } from '@proj-airi/stage-ui/components'
-import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { computed, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { ref } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 
 import WindowTitleBar from '../components/Window/TitleBar.vue'
 
 import { useRestoreScroll } from '../composables/use-restore-scroll'
+import { useSettingsRouteHeader } from '../composables/use-settings-route-header'
 
 const route = useRoute()
-const { t } = useI18n()
-const providersStore = useProviderStore()
 const scrollContainer = ref<HTMLElement>()
 useRestoreScroll(scrollContainer)
 
-const routeMeta = computed(() => route.meta as {
-  titleKey?: string
-  subtitleKey?: string
-  title?: string
-  subtitle?: string
-})
-
-const providerTitle = computed(() => {
-  if (!route.path.startsWith('/settings/providers/'))
-    return undefined
-
-  const segments = route.path.split('/').filter(Boolean)
-  const providerId = segments[3]
-
-  if (!providerId)
-    return undefined
-
-  return providersStore.findProviderDefinition(providerId)?.nameLocalize({ t })
-})
-
 // const activeSettingsTutorial = ref('default')
-const routeHeaderMetadata = computed(() => {
-  const { titleKey, subtitleKey, title, subtitle } = routeMeta.value
-  const resolvedTitle = titleKey ? t(titleKey) : title
-  const resolvedSubtitle = subtitleKey ? t(subtitleKey) : subtitle
-
-  if (resolvedTitle || resolvedSubtitle) {
-    return {
-      title: resolvedTitle,
-      subtitle: resolvedSubtitle,
-    }
-  }
-
-  if (providerTitle.value) {
-    return {
-      title: providerTitle.value,
-      subtitle: t('settings.title'),
-    }
-  }
-
-  return undefined
-})
+const routeHeaderMetadata = useSettingsRouteHeader(route)
 </script>
 
 <template>

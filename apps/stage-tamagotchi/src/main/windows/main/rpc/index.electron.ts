@@ -6,11 +6,14 @@ import type { GodotStageManager } from '../../../services/airi/godot-stage'
 import type { IOTraceRecordingService } from '../../../services/airi/io-trace-recording'
 import type { McpManager } from '../../../services/airi/mcp-servers'
 import type { AutoUpdater } from '../../../services/electron/auto-updater'
+import type { GlobalShortcutService } from '../../../services/electron/global-shortcut'
 import type { ChatWindowManager } from '../../chat'
+import type { DevtoolsWindowManager } from '../../devtools'
 import type { EditorWindowManager } from '../../editor'
 import type { NoticeWindowManager } from '../../notice'
 import type { OnboardingWindowManager } from '../../onboarding'
 import type { SettingsWindowManager } from '../../settings'
+import type { SpotlightWindowManager } from '../../spotlight'
 import type { WidgetsWindowManager } from '../../widgets'
 
 import { defineInvokeHandler } from '@moeru/eventa'
@@ -22,10 +25,14 @@ import {
   electronChatButtonStateChanged,
   electronGetChatButtonState,
   electronOpenChat,
+  electronOpenDevtoolsWindow,
   electronOpenEditor,
   electronOpenInlay,
   electronOpenMainDevtools,
   electronOpenSettings,
+  electronOpenSettingsDevtools,
+  electronSpotlightShortcutGet,
+  electronSpotlightShortcutSet,
   noticeWindowEventa,
 } from '../../../../shared/eventa'
 import { createAuthService } from '../../../services/airi/auth'
@@ -53,6 +60,11 @@ export async function setupMainWindowElectronInvokes(params: {
   onboardingWindowManager: OnboardingWindowManager
   ioTraceRecording: IOTraceRecordingService
   inlayWindow: () => Promise<BrowserWindow>
+  devtoolsWindow: DevtoolsWindowManager
+  globalShortcut: GlobalShortcutService
+  spotlightWindow: SpotlightWindowManager
+  /** Owns the main window's pin, which fullscreen mode overrides. */
+  setPinned: (pinned: boolean) => void
 }) {
   // TODO: once we refactored eventa to support window-namespaced contexts,
   // we can remove the setMaxListeners call below since eventa will be able to dispatch and
@@ -61,7 +73,7 @@ export async function setupMainWindowElectronInvokes(params: {
 
   const { context } = createContext(ipcMain, params.window)
 
-  await setupBaseWindowElectronInvokes({ context, window: params.window, serverChannel: params.serverChannel, i18n: params.i18n })
+  await setupBaseWindowElectronInvokes({ context, window: params.window, serverChannel: params.serverChannel, i18n: params.i18n, setAlwaysOnTop: params.setPinned })
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.window })
   createAutoUpdaterService({ context, window: params.window, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpManager })
@@ -86,4 +98,18 @@ export async function setupMainWindowElectronInvokes(params: {
   const stopChatButtonState = params.chatWindow.onButtonStateChange(state => context.emit(electronChatButtonStateChanged, state))
   params.window.once('closed', stopChatButtonState)
   defineInvokeHandler(context, noticeWindowEventa.openWindow, payload => params.noticeWindow.open(payload))
+
+  // Settings open inside this window, so it answers what the settings pages ask of the settings window.
+  params.globalShortcut.registerWindow({ context, window: params.window })
+  defineInvokeHandler(context, electronSpotlightShortcutGet, () => params.spotlightWindow.getShortcutAccelerator())
+  defineInvokeHandler(context, electronSpotlightShortcutSet, (payload) => {
+    if (payload?.accelerator === undefined)
+      throw new TypeError('electronSpotlightShortcutSet called with invalid payload')
+
+    return params.spotlightWindow.updateShortcutAccelerator(payload.accelerator)
+  })
+  defineInvokeHandler(context, electronOpenSettingsDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
+  defineInvokeHandler(context, electronOpenDevtoolsWindow, async (payload) => {
+    await params.devtoolsWindow.openWindow(payload)
+  })
 }

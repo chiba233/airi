@@ -31,15 +31,16 @@ onMounted(async () => {
 })
 
 /**
- * The preferences each menu item selects. The legacy window keeps the
- * floating placement, so switching back to the floating chat restores the
- * placement the user had.
+ * The preferences each menu item selects. The legacy and fullscreen modes
+ * keep the floating placement, so switching back to the floating chat
+ * restores the placement the user had.
  */
 const styleChoices = {
   'legacy': { mode: 'legacy' },
   'floating-attached': { mode: 'floating', placement: 'attached' },
   'floating-free': { mode: 'floating', placement: 'free' },
   'floating-danmaku': { mode: 'floating', placement: 'danmaku' },
+  'fullscreen': { mode: 'fullscreen' },
 } as const satisfies Record<string, Partial<ChatWindowPreferences>>
 
 type ChatWindowStyleId = keyof typeof styleChoices
@@ -49,12 +50,15 @@ const styles = computed(() => [
   { id: 'floating-attached', icon: 'i-solar:magnet-bold-duotone', label: t('tamagotchi.stage.chat-window.style.floating-attached') },
   { id: 'floating-free', icon: 'i-solar:chat-round-dots-bold-duotone', label: t('tamagotchi.stage.chat-window.style.floating-free') },
   { id: 'floating-danmaku', icon: 'i-solar:subtitles-bold-duotone', label: t('tamagotchi.stage.chat-window.style.floating-danmaku') },
+  { id: 'fullscreen', icon: 'i-solar:full-screen-square-bold-duotone', label: t('tamagotchi.stage.chat-window.style.fullscreen') },
 ] satisfies { id: ChatWindowStyleId, icon: string, label: string }[])
 
 const currentStyleId = computed<ChatWindowStyleId | undefined>(() => {
   if (!preferences.value)
     return undefined
-  return preferences.value.mode === 'legacy' ? 'legacy' : `floating-${preferences.value.placement}`
+  if (preferences.value.mode === 'floating')
+    return `floating-${preferences.value.placement}`
+  return preferences.value.mode
 })
 
 // An attached or danmaku chat follows the main window's pin, so only a free

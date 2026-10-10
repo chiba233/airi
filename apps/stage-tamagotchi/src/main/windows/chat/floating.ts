@@ -59,6 +59,8 @@ interface FloatingChatWindow {
   applyPlacement: () => void
   /** Whether the chat is unfolded, which the chat button shows as pressed. */
   isUnfolded: () => boolean
+  /** Hides the chat while the main window covers its display, and shows it again after, unless it is folded. */
+  setCovered: (covered: boolean) => void
 }
 
 /**
@@ -109,6 +111,8 @@ export function setupFloatingChatWindow(params: {
   let relocating = false
   /** The chat window's own always-on-top state, as its `always-on-top-changed` events report it. */
   let pinned = false
+  /** `true` while the main window covers its display. The chat hides then, and shows again after unless folded. */
+  let covered = false
   let slide: ReturnType<typeof animate> | undefined
   let detachFromMain: (() => void) | undefined
   /**
@@ -284,7 +288,7 @@ export function setupFloatingChatWindow(params: {
     const follow = () => followMain(main, target)
     const hideWithMain = () => target.hide()
     const showWithMain = () => {
-      if (!folded)
+      if (!folded && !covered)
         target.showInactive()
     }
     const linkToMain = () => target.setParentWindow(main)
@@ -546,5 +550,15 @@ export function setupFloatingChatWindow(params: {
         applyPlacementTo(window)
     },
     isUnfolded: () => !folded,
+    setCovered(value: boolean) {
+      covered = value
+      const window = reusable.getOpenWindow()
+      if (!window)
+        return
+      if (value)
+        window.hide()
+      else if (!folded)
+        window.showInactive()
+    },
   }
 }

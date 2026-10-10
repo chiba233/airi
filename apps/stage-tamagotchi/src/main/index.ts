@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 
+import type { MainWindowFullscreenSurface } from '../shared/eventa'
 import type { FileLoggerHandle } from './app/file-logger'
 import type { SettingsWindowManager } from './windows/settings'
 
@@ -155,6 +156,8 @@ electronApp.setAppUserModelId('ai.moeru.airi')
 // The second-instance handler should restore the main UI instead of accidentally surfacing internals.
 let userFacingMainWindow: BrowserWindow | undefined
 let settingsWindowManager: SettingsWindowManager | undefined
+/** Shows a surface in the fullscreen mode of the main window. Every settings entry point uses it once the main window exists. */
+let openFullscreenInMainWindow: ((surface: MainWindowFullscreenSurface, route?: string) => void) | undefined
 let extensionManagementWebContentsId: number | undefined
 const shouldStartMainProcess = installSingleInstanceGuard({ app, getWindow: () => userFacingMainWindow })
 
@@ -305,11 +308,11 @@ app.whenReady().then(async () => {
       ...dependsOn,
       getMainWindow: () => userFacingMainWindow,
       // NOTICE:
-      // Chat cannot depend on Settings in injeca, because Settings depends on
-      // Spotlight and Spotlight depends on Chat. Settings is built before any
-      // window accepts input, so Chat resolves it lazily.
-      // Removal condition: Settings no longer depends on Spotlight.
-      openSettingsWindow: async (route) => { await settingsWindowManager?.openWindow(route) },
+      // Chat cannot depend on the main window in injeca, because the main window
+      // depends on Chat. The main window is built before any window accepts
+      // input, so Chat resolves it lazily.
+      // Removal condition: the main window no longer depends on Chat.
+      openSettingsWindow: async (route) => { openFullscreenInMainWindow?.('settings', route) },
     }),
   })
 
@@ -339,16 +342,33 @@ app.whenReady().then(async () => {
           })
         },
       })
-      return settingsWindowManager
+      // NOTICE:
+      // Settings open in the fullscreen mode of the main window now, so every entry point that asks the settings
+      // window to open goes to the main window instead. The settings window itself is not created any more.
+      // Removal condition: the next change removes the settings window and its manager.
+      return {
+        ...settingsWindowManager,
+        openWindow: async (route?: string) => {
+          openFullscreenInMainWindow?.('settings', route)
+        },
+      }
     },
   })
 
   const mainWindow = injeca.provide('windows:main', {
-    dependsOn: { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording },
+    dependsOn: { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, globalShortcut, spotlightWindow, devtoolsWindow: devtoolsMarkdownStressWindow },
     build: async ({ dependsOn }) => setupMainWindow({
       ...dependsOn,
       onWindowCreated: (window) => {
         userFacingMainWindow = window
+      },
+      onFullscreenOpener: (open) => {
+        openFullscreenInMainWindow = open
+      },
+      // The plugin host lets only the settings interface manage extensions. Settings show in the fullscreen mode of
+      // the main window, so while it lasts, that interface is the main window.
+      onFullscreenChange: (active) => {
+        extensionManagementWebContentsId = active ? userFacingMainWindow?.webContents.id : undefined
       },
     }),
   })

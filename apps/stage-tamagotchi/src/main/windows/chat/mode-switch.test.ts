@@ -53,17 +53,17 @@ function setup(options: { floatingRestores: boolean }) {
   const modeSwitchRef: ModeSwitchRef = {}
   const legacy = createWindowDouble('legacy', modeSwitchRef, { restores: true })
   const floating = createWindowDouble('floating', modeSwitchRef, { restores: options.floatingRestores })
+  const fullscreen = createWindowDouble('fullscreen', modeSwitchRef, { restores: true })
   const modeSwitch = createChatModeSwitch({
     getMode: () => mode,
     setMode: next => mode = next,
-    legacy,
-    floating,
+    windows: { legacy, floating, fullscreen },
   })
   modeSwitchRef.current = modeSwitch
 
   legacy.isOpen = true
   legacy.text = 'unsent'
-  return { legacy, floating, modeSwitch, getMode: () => mode }
+  return { legacy, floating, fullscreen, modeSwitch, getMode: () => mode }
 }
 
 describe('createChatModeSwitch', () => {
@@ -169,14 +169,33 @@ describe('createChatModeSwitch', () => {
     expect(modeSwitch.takeDraft('floating')).toBeUndefined()
   })
 
-  it('closes the other mode window when it shows the saved mode', async () => {
-    const { legacy, floating, modeSwitch } = setup({ floatingRestores: true })
+  it('closes the other mode windows when it shows the saved mode', async () => {
+    const { legacy, floating, fullscreen, modeSwitch } = setup({ floatingRestores: true })
 
     await modeSwitch.switchTo('floating')
     legacy.isOpen = true
+    fullscreen.isOpen = true
     await modeSwitch.show()
 
     expect(floating.isOpen).toBe(true)
     expect(legacy.isOpen).toBe(false)
+    expect(fullscreen.isOpen).toBe(false)
+  })
+
+  // The fullscreen chat lives in the main window, and a switch treats it like any other chat window.
+  it('carries the draft into the fullscreen chat and out to the floating chat', async () => {
+    const { legacy, floating, fullscreen, modeSwitch, getMode } = setup({ floatingRestores: true })
+
+    await modeSwitch.switchTo('fullscreen')
+
+    expect(getMode()).toBe('fullscreen')
+    expect(fullscreen.text).toBe('unsent')
+    expect(legacy.isOpen).toBe(false)
+
+    await modeSwitch.switchTo('floating')
+
+    expect(getMode()).toBe('floating')
+    expect(floating.text).toBe('unsent')
+    expect(fullscreen.isOpen).toBe(false)
   })
 })
