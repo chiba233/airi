@@ -34,7 +34,7 @@ agent-browser --session airi-electron --cdp 9250 find role button click --name '
 Enumerate targets again, switch to the new `/settings` target, and route it to model settings:
 
 ```bash
-agent-browser --session airi-electron --cdp 9250 eval 'location.hash = "/settings/models"; true'
+agent-browser --session airi-electron --cdp 9250 eval 'location.hash = "/characters/models"; true'
 agent-browser --session airi-electron --cdp 9250 snapshot -i
 ```
 

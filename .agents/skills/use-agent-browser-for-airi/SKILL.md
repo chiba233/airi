@@ -33,7 +33,7 @@ Use a fresh browser session or a dedicated Electron user-data directory. Mark on
 agent-browser eval 'localStorage.setItem("onboarding/completed", "true"); localStorage.setItem("onboarding/skipped", "false"); location.reload(); true'
 ```
 
-Open `/settings/models`, click `Select model`, and snapshot again.
+Open `/characters/models`, click `Select model`, and snapshot again.
 
 ## Import the model
 

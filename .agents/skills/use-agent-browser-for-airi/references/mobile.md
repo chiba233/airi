@@ -6,7 +6,7 @@ Run stage-pocket's web surface on a dedicated HTTPS port:
 
 ```bash
 pnpm -F @proj-airi/stage-pocket dev:web --host 127.0.0.1 --port 5174
-agent-browser --session airi-pocket-web --ignore-https-errors open https://127.0.0.1:5174/settings/models
+agent-browser --session airi-pocket-web --ignore-https-errors open https://127.0.0.1:5174/characters/models
 ```
 
 Set a desktop-width viewport while operating the settings page if controls are present in the DOM but visually outside the compact layout:

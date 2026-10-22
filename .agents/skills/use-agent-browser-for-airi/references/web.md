@@ -4,7 +4,7 @@ Start stage-web on a known origin, then use one fresh agent-browser session per 
 
 ```bash
 pnpm -F @proj-airi/stage-web dev --host 127.0.0.1 --port 5173
-agent-browser --session airi-web-live2d open http://127.0.0.1:5173/settings/models
+agent-browser --session airi-web-live2d open http://127.0.0.1:5173/characters/models
 ```
 
 Set onboarding storage, reload, wait for `Select model`, and follow the shared detached-input import contract from `SKILL.md`.
