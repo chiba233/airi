@@ -11,7 +11,7 @@ const openAICompatibleConfigSchema = z.object({
   baseUrl: z
     .string('Base URL')
     .optional()
-    .default('http://localhost:5173/settings/providers/chat/prompt-api'),
+    .default('http://localhost:5173/settings/services/chat/prompt-api'),
 })
 
 type OpenAICompatibleConfig = z.input<typeof openAICompatibleConfigSchema>

@@ -1,7 +1,7 @@
 import type { Session, User } from 'better-auth'
 
 import en from '@proj-airi/i18n/locales/en'
-import OfficialProviderSpeechStreamingPage from '@proj-airi/stage-pages/pages/settings/providers/speech/official-provider-speech-streaming.vue'
+import OfficialProviderSpeechStreamingPage from '@proj-airi/stage-pages/pages/settings/services/speech/official-provider-speech-streaming.vue'
 
 import { errorMessageFrom } from '@moeru/std'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
@@ -111,7 +111,7 @@ describe('official streaming speech provider settings', () => {
     localStorage.clear()
   })
 
-  // https://airi.moeru.ai/settings/providers/speech/official-provider-speech-streaming
+  // https://airi.moeru.ai/settings/services/speech/official-provider-speech-streaming
   it('does not request the protected catalog before authentication', async () => {
     const fetchMock = vi.fn<typeof fetch>(async input => responseFor(input))
     vi.stubGlobal('fetch', fetchMock)

@@ -407,7 +407,7 @@ onUnmounted(() => {
       <ChatProviderSetupCallout
         v-if="!chatReady"
         :class="['mx-3']"
-        @configure="router.push('/settings/providers')"
+        @configure="router.push('/settings/services')"
       />
       <div
         ref="messageComposer"
@@ -541,7 +541,7 @@ onUnmounted(() => {
             :reply-to-message-id="replyTarget?.message.id"
             @recording-change="voiceActive = $event"
             @sent="composer.clearReply()"
-            @configure="router.push('/settings/modules/hearing/transcriber')"
+            @configure="router.push('/settings/audio/transcriber')"
           />
         </div>
       </div>

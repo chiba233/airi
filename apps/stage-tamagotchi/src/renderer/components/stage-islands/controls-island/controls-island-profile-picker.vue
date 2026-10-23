@@ -20,7 +20,7 @@ const contentSide = computed(() => isTop.value ? 'bottom' : 'top')
 const contentAlign = computed(() => isLeft.value ? 'start' : 'end')
 
 function handleManage() {
-  openSettings({ route: '/settings/airi-card' })
+  openSettings({ route: '/characters/cards' })
 }
 </script>
 

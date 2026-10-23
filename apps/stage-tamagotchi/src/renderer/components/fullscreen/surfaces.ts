@@ -4,6 +4,7 @@ import type { Router, RouteRecordRaw } from 'vue-router'
 import type { FullscreenSurfaceId } from '../../../shared/eventa'
 import type { FullscreenHost } from '../../window-context'
 
+import { hubRoutePrefixes } from '@proj-airi/stage-shared'
 import { defineAsyncComponent } from 'vue'
 
 /** The settings home. A settings page that opens from outside settings keeps it under itself in the history. */
@@ -37,8 +38,8 @@ export const fullscreenSurfaces: Record<FullscreenSurfaceId, FullscreenSurface> 
     icon: 'i-solar:settings-minimalistic-outline',
     label: 'tamagotchi.stage.fullscreen-island.settings',
     panel: defineAsyncComponent(() => import('./settings-panel.vue')),
-    // Devtools pages open from the developer settings, so they show in the same surface.
-    prefixes: ['/settings', '/devtools'],
+    // Settings show the pages of every hub. Devtools pages open from the developer settings, so they show here too.
+    prefixes: [...Object.values(hubRoutePrefixes), '/devtools'],
     // Settings stay on the page they show unless a request names another one, so switching back returns to it.
     async prepare({ router, page }) {
       const inSettings = fullscreenSurfaceOf(router.currentRoute.value.path) === 'settings'

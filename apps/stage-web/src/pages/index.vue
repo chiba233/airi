@@ -120,7 +120,7 @@ const router = useRouter()
             :enable-orbit-controls="!isMobile"
             :paused="paused"
             @error="markModelFailed"
-            @select-avatar-model="router.push('/settings/models')"
+            @select-avatar-model="router.push('/characters/models')"
           />
         </div>
         <InteractiveArea v-if="!isMobile" h="85dvh" absolute right-4 flex flex-1 flex-col max-w="500px" min-w="30%" />

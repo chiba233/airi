@@ -20,7 +20,7 @@ import IconItem from './icon-item.vue'
         title="Modules"
         description="Thinking, vision, speech synthesis, gaming, etc."
         icon="i-solar:layers-bold-duotone"
-        to="/settings/modules"
+        to="/settings/tools"
         class="font-sans"
       />
     </Variant>
@@ -33,7 +33,7 @@ import IconItem from './icon-item.vue'
         title="Modules"
         description="Thinking, vision, speech synthesis, gaming, etc."
         icon="i-solar:layers-bold-duotone"
-        to="/settings/modules"
+        to="/settings/tools"
         class="_hover font-sans"
       />
     </Variant>

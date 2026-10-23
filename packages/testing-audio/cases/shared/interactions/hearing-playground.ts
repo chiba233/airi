@@ -19,7 +19,7 @@ export async function openHearingPlayground(runtime: AudioInputSession): Promise
   await settingsButton.click({ force: true })
   const settingsPage = await waitForElectronPage(app, page => page.url().includes('index.html#/settings'))
   await settingsPage.evaluate(() => {
-    window.location.hash = '/settings/modules/hearing/transcriber'
+    window.location.hash = '/settings/audio/transcriber'
   })
   await settingsPage.waitForURL(/#\/settings\/modules\/hearing/)
   await settingsPage.getByTestId('hearing-playground-monitor-toggle').waitFor({ state: 'visible', timeout: 60_000 })

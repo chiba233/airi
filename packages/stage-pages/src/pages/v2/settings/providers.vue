@@ -54,7 +54,7 @@ function handleAdd(providerId: string) {
 }
 
 function handleClick(providerId: string) {
-  router.push(`/v2/settings/providers/edit/${providerId}`)
+  router.push(`/v2/settings/services/edit/${providerId}`)
 }
 </script>
 

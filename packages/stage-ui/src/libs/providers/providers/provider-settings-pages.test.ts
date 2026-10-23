@@ -25,7 +25,7 @@ const PAGELESS_SPEECH_PROVIDERS = new Set([
 // Removal condition: stage-pages gains a node test project.
 const speechPagesDirectory = resolve(
   import.meta.dirname,
-  '../../../../../stage-pages/src/pages/settings/providers/speech',
+  '../../../../../stage-pages/src/pages/settings/services/speech',
 )
 
 describe('speech provider settings pages', () => {

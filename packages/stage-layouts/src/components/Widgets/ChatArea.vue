@@ -155,7 +155,7 @@ watch(replyTarget, async (target) => {
       // The callout takes the panel width. Its content must not widen the panel.
       'w-0 min-w-full',
     ]"
-    @configure="router.push('/settings/providers')"
+    @configure="router.push('/settings/services')"
   />
   <div ref="composer" :class="['flex gap-2 <md:h-full', 'ph-no-capture']">
     <div

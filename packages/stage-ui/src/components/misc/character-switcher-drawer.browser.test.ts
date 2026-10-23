@@ -57,7 +57,7 @@ async function mountSwitcher(name = 'ReLU') {
   }
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/', component: { template: '<div />' } }, { path: '/settings/airi-card', component: { template: '<div />' } }],
+    routes: [{ path: '/', component: { template: '<div />' } }, { path: '/characters/cards', component: { template: '<div />' } }],
   })
   await router.push('/')
   let initialization: Promise<void> | undefined
@@ -103,7 +103,7 @@ it('selects a character through the real store and opens character management', 
   await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
   await screen.getByTestId('character-selector-button').click()
   await page.getByRole('button', { name: 'Manage characters' }).click()
-  await expect.poll(() => router.currentRoute.value.path).toBe('/settings/airi-card')
+  await expect.poll(() => router.currentRoute.value.path).toBe('/characters/cards')
 })
 
 it('truncates long titles and restores trigger focus on dismissal', async () => {

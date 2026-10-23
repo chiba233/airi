@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useHostEventaContext, useHostLocale } from '@proj-airi/stage-host-context'
 import { themeColorFromValue, useThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
+import { hubOfRoute } from '@proj-airi/stage-shared'
 import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { useInferencePreload } from '@proj-airi/stage-ui/composables'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
@@ -55,7 +56,8 @@ const initialRoutePath = resolveInitialRendererRoutePath(route.path)
 const chatStore = useChatStore()
 const builtinToolsStore = useTamagotchiBuiltinToolsStore()
 const syncedPinia = usePiniaSynced()
-const isSettingsWindow = initialRoutePath === '/settings' || initialRoutePath.startsWith('/settings/')
+// The settings window shows the pages of every hub.
+const isSettingsWindow = hubOfRoute(initialRoutePath) !== undefined
 const isChatWindow = initialRoutePath === '/chat'
 const isSpotlightWindow = initialRoutePath === '/spotlight'
 const isMainRenderer = windowContext.leadership === 'leader-only'

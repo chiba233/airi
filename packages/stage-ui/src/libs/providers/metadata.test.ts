@@ -60,31 +60,31 @@ describe('provider metadata selector', () => {
       id: 'vision-test-provider',
       category: 'vision',
       tasks: ['chat', 'vision'],
-      to: '/settings/providers/vision/test-provider',
+      to: '/settings/services/vision/test-provider',
     })
 
     expect(metadata).toMatchObject({
       id: 'vision-test-provider',
       category: 'vision',
       tasks: ['chat', 'vision'],
-      to: '/settings/providers/vision/test-provider',
+      to: '/settings/services/vision/test-provider',
     })
     expect(definition.id).toBe('test-provider')
     expect(definition.tasks).toEqual(['chat'])
   })
 
   it('uses the settings route that the definition declares', async () => {
-    const metadata = await selectProviderMetadata({ ...definition, to: '/settings/modules/hearing/transcriber' }, t)
+    const metadata = await selectProviderMetadata({ ...definition, to: '/settings/audio/transcriber' }, t)
 
-    expect(metadata.to).toBe('/settings/modules/hearing/transcriber')
+    expect(metadata.to).toBe('/settings/audio/transcriber')
   })
 
   it('prefers the settings route of the view override over the definition route', async () => {
-    const metadata = await selectProviderMetadata({ ...definition, to: '/settings/modules/hearing/transcriber' }, t, {
-      to: '/settings/providers/vision/test-provider',
+    const metadata = await selectProviderMetadata({ ...definition, to: '/settings/audio/transcriber' }, t, {
+      to: '/settings/services/vision/test-provider',
     })
 
-    expect(metadata.to).toBe('/settings/providers/vision/test-provider')
+    expect(metadata.to).toBe('/settings/services/vision/test-provider')
   })
 
   it('leaves the route empty when neither the definition nor the override declares one', async () => {

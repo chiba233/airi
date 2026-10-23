@@ -10,7 +10,7 @@ import { createApp, h } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import SpeechSettings from '../../../../stage-pages/src/pages/settings/modules/speech.vue'
+import SpeechSettings from '../../../../stage-pages/src/pages/characters/speech.vue'
 
 import { injectKeyPiniaSynced } from '../../libs/pinia/synced-context'
 import { captureAnalyticsEvent, enableAnalyticsCapture, isAnalyticsAvailableInBuild } from '../../libs/product-signals/client'

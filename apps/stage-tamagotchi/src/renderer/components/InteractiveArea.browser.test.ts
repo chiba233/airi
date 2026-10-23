@@ -78,7 +78,7 @@ async function renderArea(component: Component = InteractiveArea, options: { pro
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: { template: '<div />' } },
-      { path: '/settings/providers', component: { template: '<div />' } },
+      { path: '/settings/services', component: { template: '<div />' } },
     ],
   })
   await router.push('/')
@@ -559,7 +559,7 @@ describe('interactive area synchronized state', () => {
     expect(send).not.toHaveBeenCalled()
 
     await screen.getByText('stage.chat.provider-configuration.action').click()
-    expect(openSettings).toHaveBeenCalledWith({ route: '/settings/providers' })
+    expect(openSettings).toHaveBeenCalledWith({ route: '/settings/services' })
   })
 
   // ROOT CAUSE:
@@ -582,7 +582,7 @@ describe('interactive area synchronized state', () => {
     expect(send).not.toHaveBeenCalled()
 
     await screen.getByText('stage.chat.provider-configuration.action').click()
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/settings/providers'))
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/settings/services'))
   })
 
   // https://github.com/moeru-ai/airi/pull/2399

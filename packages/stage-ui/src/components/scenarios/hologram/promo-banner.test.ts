@@ -14,7 +14,7 @@ describe('promo banner visuals', () => {
       },
       {
         key: 'build',
-        action: { type: 'route', to: '/settings/modules/consciousness' },
+        action: { type: 'route', to: '/characters/consciousness' },
       },
       {
         key: 'spring',
@@ -26,7 +26,7 @@ describe('promo banner visuals', () => {
       },
       {
         key: 'home',
-        action: { type: 'route', to: '/settings/scene' },
+        action: { type: 'route', to: '/characters/scene' },
       },
     ])
   })

@@ -144,7 +144,7 @@ export const useProviderStore = defineStore('provider', () => {
         const id = `${VISION_PROVIDER_ID_PREFIX}${definition.id}`
         metadata[id] = await selectProviderMetadata(definition, t, {
           id,
-          to: `/settings/providers/vision/${definition.id}`,
+          to: `/settings/services/vision/${definition.id}`,
           category: 'vision',
           tasks: Array.from(new Set([...definition.tasks, 'vision', 'image-understanding'])),
         })

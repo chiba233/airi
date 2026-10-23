@@ -29,7 +29,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 const { t } = useI18n()
 const router = useRouter()
-const route = useRoute('/v2/settings/providers/edit/[providerId]/')
+const route = useRoute('/v2/settings/services/edit/[providerId]/')
 
 const providerStore = useProviderConfigStore()
 const emptyProviderConfig = Object.freeze({})
@@ -385,7 +385,7 @@ function handleSaveAnyway() {
 
 function handleDeleteProvider() {
   const id = providerId.value
-  router.push('/v2/settings/providers')
+  router.push('/v2/settings/services')
   setTimeout(() => providerStore.removeProvider(id), 100)
 }
 </script>

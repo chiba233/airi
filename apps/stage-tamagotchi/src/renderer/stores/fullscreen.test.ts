@@ -69,9 +69,9 @@ describe('main window fullscreen store', () => {
   it('opens a settings page with the settings home under it', async () => {
     const { router, fullscreen } = await setup()
 
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
 
-    expect(router.currentRoute.value.path).toBe('/settings/airi-card')
+    expect(router.currentRoute.value.path).toBe('/characters/cards')
     expect(fullscreen.phase).toBe('expanding')
 
     router.back()
@@ -82,19 +82,19 @@ describe('main window fullscreen store', () => {
   it('keeps the main page in the matched routes of settings, and other pages apart', async () => {
     const { router } = await setup()
 
-    expect(router.resolve('/settings/airi-card').matched.slice(0, 2).map(record => record.path)).toEqual(['/', '/'])
+    expect(router.resolve('/characters/cards').matched.slice(0, 2).map(record => record.path)).toEqual(['/', '/'])
     expect(router.resolve('/chat').matched.map(record => record.path)).toEqual(['/chat'])
   })
 
   // Switching is not a navigation, so a page with unsaved changes never sees a leave, and each panel keeps its state.
   it('switches surfaces without leaving the settings page, and keeps both mounted', async () => {
     const { router, fullscreen } = await setup()
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
     fullscreen.settle('open')
     await fullscreen.open('chat')
     await fullscreen.open('settings')
 
-    expect(router.currentRoute.value.path).toBe('/settings/airi-card')
+    expect(router.currentRoute.value.path).toBe('/characters/cards')
     expect([...fullscreen.mounted]).toEqual(['settings', 'chat'])
     expect(mocks.reportSurface.mock.calls).toEqual([
       [{ surface: 'settings', mounted: ['settings'] }],
@@ -105,7 +105,7 @@ describe('main window fullscreen store', () => {
 
   it('leaves the settings page through the router when it closes, and starts fresh after', async () => {
     const { router, fullscreen } = await setup()
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
     fullscreen.settle('open')
 
     await fullscreen.close()
@@ -123,39 +123,39 @@ describe('main window fullscreen store', () => {
   // The card editor stops a leave while it has unsaved changes, and shows its dialog in the settings surface.
   it('stays open on settings when a settings page stops the leave', async () => {
     const { router, fullscreen } = await setup()
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
     fullscreen.settle('open')
     await fullscreen.open('chat')
-    router.beforeEach((_, from) => from.path !== '/settings/airi-card')
+    router.beforeEach((_, from) => from.path !== '/characters/cards')
 
     await fullscreen.close()
 
     expect(fullscreen.phase).toBe('open')
     expect(fullscreen.surface).toBe('settings')
-    expect(router.currentRoute.value.path).toBe('/settings/airi-card')
+    expect(router.currentRoute.value.path).toBe('/characters/cards')
   })
 
   it('shows the kept surface at once after a reload', async () => {
-    const { router, fullscreen } = await setup({ startAt: '/settings/airi-card' })
+    const { router, fullscreen } = await setup({ startAt: '/characters/cards' })
 
     await fullscreen.resume('settings')
 
     expect(fullscreen.phase).toBe('open')
-    expect(router.currentRoute.value.path).toBe('/settings/airi-card')
+    expect(router.currentRoute.value.path).toBe('/characters/cards')
   })
 
   // The window of the `multi-window` mode shows the same settings pages, with its own page kept under them.
   it('nests the settings under the page of the window that hosts the mode', async () => {
     const { router } = await setup({ host: 'workspace-window' })
 
-    expect(router.resolve('/settings/airi-card').matched.slice(0, 2).map(record => record.path)).toEqual(['/workspace', '/workspace'])
+    expect(router.resolve('/characters/cards').matched.slice(0, 2).map(record => record.path)).toEqual(['/workspace', '/workspace'])
     expect(router.resolve('/').matched.map(record => record.path)).toEqual(['/', '/'])
   })
 
   // Closing leaves the settings pages for the page of the host, so that window keeps its own page.
   it('returns to the page of the host when the mode closes', async () => {
     const { router, fullscreen } = await setup({ host: 'workspace-window' })
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
     fullscreen.settle('open')
 
     await fullscreen.close()
@@ -167,17 +167,17 @@ describe('main window fullscreen store', () => {
   // A move between windows hands every mounted surface its own state, and the same surface stays in front.
   it('packs each mounted surface with its state, and the next host restores them', async () => {
     const { fullscreen } = await setup()
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
     fullscreen.settle('open')
     await fullscreen.open('chat')
-    fullscreen.carry('settings', { collect: () => '/settings/airi-card', restore: () => {} })
+    fullscreen.carry('settings', { collect: () => '/characters/cards', restore: () => {} })
     fullscreen.carry('chat', { collect: () => 'unsent draft', restore: () => {} })
 
     const packed = await fullscreen.pack()
     if (!packed)
       throw new Error('The open mode packed nothing')
 
-    expect(packed).toEqual({ surface: 'chat', surfaces: [{ id: 'settings', state: '/settings/airi-card' }, { id: 'chat', state: 'unsent draft' }] })
+    expect(packed).toEqual({ surface: 'chat', surfaces: [{ id: 'settings', state: '/characters/cards' }, { id: 'chat', state: 'unsent draft' }] })
 
     const next = await setup({ host: 'workspace-window' })
     await next.fullscreen.unpack(packed)
@@ -200,14 +200,14 @@ describe('main window fullscreen store', () => {
   // Turning the experiment off ends the mode from the chat first, and settings still move to the settings window.
   it('packs while the mode closes, because its panels stay mounted until the transition ends', async () => {
     const { fullscreen } = await setup()
-    await fullscreen.open('settings', '/settings/airi-card')
+    await fullscreen.open('settings', '/characters/cards')
     fullscreen.settle('open')
-    fullscreen.carry('settings', { collect: () => '/settings/airi-card', restore: () => {} })
+    fullscreen.carry('settings', { collect: () => '/characters/cards', restore: () => {} })
 
     await fullscreen.close()
 
     expect(fullscreen.phase).toBe('closing')
-    expect(await fullscreen.pack()).toEqual({ surface: 'settings', surfaces: [{ id: 'settings', state: '/settings/airi-card' }] })
+    expect(await fullscreen.pack()).toEqual({ surface: 'settings', surfaces: [{ id: 'settings', state: '/characters/cards' }] })
   })
 
   // A second move can come before the chat panel of the first one mounts. The draft still travels with it.

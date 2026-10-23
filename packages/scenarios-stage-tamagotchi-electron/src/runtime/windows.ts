@@ -69,7 +69,8 @@ async function classifyWindow(page: Page): Promise<StageWindowSnapshot | null> {
     return { name: 'chat', page, title, route }
   }
 
-  if (route.startsWith('/settings') || title === 'Settings') {
+  // The settings window shows the pages of every hub, see `hubRoutePrefixes` in @proj-airi/stage-shared.
+  if (['/characters', '/settings'].some(prefix => route.startsWith(prefix)) || title === 'Settings') {
     return { name: 'settings', page, title, route }
   }
 

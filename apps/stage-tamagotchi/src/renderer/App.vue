@@ -4,7 +4,7 @@ import type { ArtistrySyncPayload } from '@proj-airi/stage-shared'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { themeColorFromValue, useThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
-import { artistrySyncConfig } from '@proj-airi/stage-shared'
+import { artistrySyncConfig, hubOfRoute } from '@proj-airi/stage-shared'
 import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { updateModelAssetStatus, useInferencePreload } from '@proj-airi/stage-ui/composables'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
@@ -122,7 +122,8 @@ const isFloatingChatWindow = initialRoutePath === '/chat-floating'
 const { active: mainWindowFullscreen } = storeToRefs(useFullscreenStore())
 // A window that hosts the fullscreen mode can load on a settings route, after a reload for example. So the windows
 // are told apart by the host that the main process names, not by the first route alone.
-const isSettingsWindow = !windowContext.fullscreenHost && (initialRoutePath === '/settings' || initialRoutePath.startsWith('/settings/'))
+// The settings window shows the pages of every hub.
+const isSettingsWindow = !windowContext.fullscreenHost && hubOfRoute(initialRoutePath) !== undefined
 // Every window sends its spans to the hub, so the IO tracer and the trace files have the spans of every window.
 const stopIOTraceHubBridge = initializeIOTraceHubBridge(context.value)
 
@@ -209,7 +210,7 @@ function createFullStageRuntime() {
   const reportPluginCapability = useElectronEventaInvoke(electronPluginUpdateCapability)
   const getGodotStageStatus = useElectronEventaInvoke(electronGodotStageGetStatus)
   const syncArtistryConfig = useElectronEventaInvoke(artistrySyncConfig)
-  const usesGodotStage = !!windowContext.fullscreenHost || initialRoutePath.startsWith('/settings')
+  const usesGodotStage = !!windowContext.fullscreenHost || hubOfRoute(initialRoutePath) !== undefined
   const isWidgetsWindow = initialRoutePath === '/widgets'
 
   function syncGodotStageRenderer(state: { state: 'stopped' | 'starting' | 'running' | 'stopping' | 'error' }) {

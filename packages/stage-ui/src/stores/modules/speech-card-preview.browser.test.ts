@@ -8,7 +8,7 @@ import { createApp, h, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 
-import CardEditor from '../../../../stage-pages/src/pages/settings/airi-card/components/CardEditor.vue'
+import CardEditor from '../../../../stage-pages/src/pages/characters/cards/components/CardEditor.vue'
 
 import { useProviderConfigStore } from '../providers/config'
 import { useAiriCardStore } from './airi-card'

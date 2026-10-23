@@ -33,7 +33,7 @@ const routeMeta = computed(() => route.meta as {
 })
 
 const providerTitle = computed(() => {
-  if (!route.path.startsWith('/settings/providers/'))
+  if (!route.path.startsWith('/settings/services/'))
     return undefined
 
   const segments = route.path.split('/').filter(Boolean)

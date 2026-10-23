@@ -45,7 +45,7 @@ export const promoBannerVisuals: PromoBannerVisual[] = [
   {
     key: 'build',
     image: factorioPoster,
-    action: { type: 'route', to: '/settings/modules/consciousness' },
+    action: { type: 'route', to: '/characters/consciousness' },
     accentClass: 'from-cyan-500/30 via-sky-400/18 to-transparent',
     fallbackIcon: 'i-solar:box-bold-duotone',
     fallbackIconClass: 'text-cyan-100',
@@ -76,7 +76,7 @@ export const promoBannerVisuals: PromoBannerVisual[] = [
   {
     key: 'home',
     image: '',
-    action: { type: 'route', to: '/settings/scene' },
+    action: { type: 'route', to: '/characters/scene' },
     accentClass: 'from-sky-400/28 via-indigo-300/14 to-transparent',
     fallbackIcon: 'i-solar:home-angle-bold-duotone',
     fallbackIconClass: 'text-sky-100',

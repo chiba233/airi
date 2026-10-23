@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useModulesList } from '@proj-airi/stage-ui/composables/use-modules-list'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -11,6 +12,12 @@ import { useResourcesStore } from '../../../stores/resources'
 const { t } = useI18n()
 
 const { resources, pendingResources, atLeastOneLoading } = storeToRefs(useResourcesStore())
+const { modulesList } = useModulesList()
+
+/** The page of a module. Its settings live in the hub that owns them, such as the characters or the settings. */
+function modulePath(moduleName: string) {
+  return modulesList.value.find(module => module.id === moduleName)?.to ?? '/settings'
+}
 
 const totalProgress = computed(() => {
   return Array
@@ -44,7 +51,7 @@ const totalProgress = computed(() => {
       </div>
       <ul ml-4 mt-3>
         <li v-for="[moduleName, module] in resources" :key="moduleName">
-          <WindowRouterLink :to="`/settings/modules/${moduleName}`" label="settings">
+          <WindowRouterLink :to="modulePath(moduleName)" label="settings">
             <div flex items-center gap-1>
               <div flex items-center gap-1>
                 <div i-solar:microphone-3-bold-duotone text="neutral-500 dark:neutral-400" />

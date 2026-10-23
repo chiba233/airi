@@ -432,7 +432,7 @@ defineExpose({
       <ChatProviderSetupCallout
         v-if="!chatReady"
         :class="['mx-2 mb-1']"
-        @configure="openSettings({ route: '/settings/providers' })"
+        @configure="openSettings({ route: '/settings/services' })"
       />
       <div
         ref="message-composer"

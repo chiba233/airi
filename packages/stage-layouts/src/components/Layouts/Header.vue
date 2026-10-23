@@ -8,7 +8,7 @@ import HeaderLink from './HeaderLink.vue'
 const router = useRouter()
 
 function handleNavigation() {
-  router.push('/settings/airi-card')
+  router.push('/characters/cards')
 }
 </script>
 

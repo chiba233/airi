@@ -21,7 +21,7 @@ const developerPattern = /Open DevTools|打开|Markdown|Lag|Vision Capture|Scree
 // Fresh environments with no providers configured would hang without this pattern.
 //
 // Caveat: vision.vue reuses the same i18n key, so this also matches on
-// /settings/modules/vision. That remains safe because this step is reached from
+// /characters/vision. That remains safe because this step is reached from
 // developer, which does not render either phrase. If the step order changes,
 // pick a token unique to consciousness.vue instead.
 const consciousnessPattern = /Select the suitable LLM|为意识选择合适/i
@@ -36,7 +36,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'airi-card',
       kind: 'settings-route',
-      routePath: '/settings/airi-card',
+      routePath: '/characters/cards',
       readyPattern: airiCardPattern,
       rawCaptureName: '05-airi-card',
       docAssetFileName: 'manual-airi-card.avif',
@@ -45,7 +45,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'providers',
       kind: 'settings-route',
-      routePath: '/settings/providers',
+      routePath: '/settings/services',
       readyPattern: providersPattern,
       rawCaptureName: '06-providers',
       docAssetFileName: 'manual-providers.avif',
@@ -63,7 +63,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'system-general',
       kind: 'settings-route',
-      routePath: '/settings/system/general',
+      routePath: '/settings/general',
       readyPattern: systemGeneralPattern,
       rawCaptureName: '08-system-general',
       docAssetFileName: 'manual-system-general.avif',
@@ -72,7 +72,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'system-color-scheme',
       kind: 'settings-route',
-      routePath: '/settings/system/color-scheme',
+      routePath: '/settings/appearance',
       readyPattern: systemColorSchemePattern,
       rawCaptureName: '09-system-color-scheme',
       docAssetFileName: 'manual-system-color-scheme.avif',
@@ -81,7 +81,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'models',
       kind: 'settings-route',
-      routePath: '/settings/models',
+      routePath: '/characters/models',
       readyPattern: modelsPattern,
       rawCaptureName: '10-models',
       docAssetFileName: 'manual-models.avif',
@@ -90,7 +90,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'modules',
       kind: 'settings-route',
-      routePath: '/settings/modules',
+      routePath: '/settings/tools',
       readyPattern: modulesPattern,
       rawCaptureName: '11-modules',
       docAssetFileName: 'manual-modules.avif',
@@ -99,7 +99,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'hearing',
       kind: 'settings-route',
-      routePath: '/settings/modules/hearing/transcriber',
+      routePath: '/settings/audio/transcriber',
       readyPattern: hearingPattern,
       rawCaptureName: '12-hearing',
       docAssetFileName: 'manual-hearing.avif',
@@ -108,7 +108,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'system-developer',
       kind: 'settings-route',
-      routePath: '/settings/system/developer',
+      routePath: '/settings/lab/developer',
       readyPattern: developerPattern,
       rawCaptureName: '13-system-developer',
       docAssetFileName: 'manual-system-developer.avif',
@@ -117,7 +117,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'consciousness',
       kind: 'settings-route',
-      routePath: '/settings/modules/consciousness',
+      routePath: '/characters/consciousness',
       readyPattern: consciousnessPattern,
       rawCaptureName: '14-consciousness',
       docAssetFileName: 'manual-consciousness.avif',
@@ -126,7 +126,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'speech',
       kind: 'settings-route',
-      routePath: '/settings/modules/speech',
+      routePath: '/characters/speech',
       readyPattern: speechPattern,
       rawCaptureName: '15-speech',
       docAssetFileName: 'manual-speech.avif',
@@ -135,7 +135,7 @@ export const settingsSection: ManualCaptureSection = {
     {
       id: 'vision',
       kind: 'settings-route',
-      routePath: '/settings/modules/vision',
+      routePath: '/characters/vision',
       readyPattern: visionPattern,
       rawCaptureName: '16-vision',
       docAssetFileName: 'manual-vision.avif',

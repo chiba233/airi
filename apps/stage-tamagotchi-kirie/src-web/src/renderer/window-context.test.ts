@@ -12,7 +12,7 @@ describe('resolveInitialRendererRoutePath', () => {
   // https://github.com/moeru-ai/airi/pull/2304
   it('uses the hash route before Vue Router hydrates', () => {
     expect(resolveInitialRendererRoutePath('/', '#/widgets')).toBe('/widgets')
-    expect(resolveInitialRendererRoutePath('/', '#/settings/providers?source=tray')).toBe('/settings/providers')
+    expect(resolveInitialRendererRoutePath('/', '#/settings/services?source=tray')).toBe('/settings/services')
   })
 
   it('uses the router path when no hash route exists', () => {

@@ -726,14 +726,14 @@ async function main() {
     })
     addTimeline('screenshot-captured', { label: 'discord-before-route' })
 
-    await mainTargetClient.evaluate(`window.__AIRI_DEBUG__.navigateTo('/settings/modules/messaging-discord')`)
+    await mainTargetClient.evaluate(`window.__AIRI_DEBUG__.navigateTo('/settings/tools/messaging-discord')`)
     addTimeline('navigate-to-discord-settings')
 
     const settingsSnapshot = await waitFor('discord settings route', async () => {
       const snapshot = await mainTargetClient!.evaluate<Record<string, any>>('window.__AIRI_DEBUG__.getSnapshot()')
       report.debugSnapshots.push(snapshot)
 
-      const onRoute = String(snapshot.route || '').includes('/settings/modules/messaging-discord')
+      const onRoute = String(snapshot.route || '').includes('/settings/tools/messaging-discord')
       const hasControls = Boolean(snapshot.discord?.hasTokenInput)
         && Boolean(snapshot.discord?.hasSaveButton)
 

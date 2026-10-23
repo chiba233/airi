@@ -14,7 +14,7 @@ export interface ProviderDefinition<TConfig = Record<string, unknown>, TId exten
    * Settings route that the Providers page opens for this Provider.
    *
    * Set it when the settings live somewhere other than
-   * `/settings/providers/<category>/<id>`, so the card does not open an empty route.
+   * `/settings/services/<category>/<id>`, so the card does not open an empty route.
    */
   to?: string
 }

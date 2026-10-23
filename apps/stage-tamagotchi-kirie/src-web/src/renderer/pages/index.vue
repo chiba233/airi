@@ -408,7 +408,7 @@ const cursorPosition = computed(() => ({
           :paused="stagePaused"
           @error="handleStageRenderError"
           @reset="handleStageReset"
-          @select-avatar-model="openSettings({ route: '/settings/models' })"
+          @select-avatar-model="openSettings({ route: '/characters/models' })"
         />
         <HoloCoupon />
         <ControlsIslandRoot :frozen="controlsIslandInteractionActive">

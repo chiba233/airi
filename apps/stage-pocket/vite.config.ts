@@ -157,7 +157,7 @@ export default defineConfig({
           exclude: base => [
             ...base,
             '**/settings/connection/index.vue',
-            '**/settings/modules/beat-sync.vue',
+            '**/settings/tools/beat-sync.vue',
           ],
         },
       ],

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { moveFullscreen } from './fullscreen'
 
-const pack: FullscreenPack = { surface: 'chat', surfaces: [{ id: 'settings', state: '/settings/system' }, { id: 'chat', state: 'unsent draft' }] }
+const pack: FullscreenPack = { surface: 'chat', surfaces: [{ id: 'settings', state: '/settings/general' }, { id: 'chat', state: 'unsent draft' }] }
 
 function place(options: { packs?: FullscreenPack, closes?: boolean } = {}) {
   const steps: string[] = []

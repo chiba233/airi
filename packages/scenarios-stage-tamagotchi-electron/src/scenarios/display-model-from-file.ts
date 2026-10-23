@@ -31,7 +31,7 @@ const localStorageKeys = [
 const localforageDatabaseName = 'localforage'
 const localforageStoreName = 'keyvaluepairs'
 const importedModelKeyPrefix = 'display-model-'
-const modelRoutePath = '/settings/models'
+const modelRoutePath = '/characters/models'
 
 /**
  * Imports and selects a display model through AIRI's user-facing model chooser.

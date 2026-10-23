@@ -56,7 +56,7 @@ function finishClose() {
   failed.value = false
   if (manageAfterClose.value) {
     manageAfterClose.value = false
-    void router.push('/settings/airi-card')
+    void router.push('/characters/cards')
   }
 }
 </script>
